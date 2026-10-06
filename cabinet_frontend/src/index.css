@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Custom scrollbar for dark glass aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Smooth transitions on all interactive elements */
+*, *::before, *::after {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-timing-function: ease;
+  transition-duration: 150ms;
+}
