@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { 
   User, Activity, FileText, CheckCircle, Package, Truck, 
-  ShieldCheck, Clock, Zap, LogOut, ChevronRight, Check
+  ShieldCheck, Clock, Zap, LogOut, ChevronRight, Check,
+  Upload, Download
 } from "lucide-react";
 import shadeGuideImg from "./assets/shade-guide.png";
 import logoImg from "./assets/logo.png";
@@ -199,7 +200,8 @@ const ToothSvg = ({ isTop, isActive, className }) => (
 function DentistForm({ user, onSuccess }) {
   const [formData, setFormData] = useState({
     patient_ref: "", tooth_number: "", shade: "A1", material: "Zircone",
-    is_fast_track: false, disinfected: false
+    is_fast_track: false, disinfected: false,
+    impression_type: "PHYSIQUE", stl_file_name: ""
   });
   const [loading, setLoading] = useState(false);
 
@@ -211,7 +213,8 @@ function DentistForm({ user, onSuccess }) {
     "Provisoire Résine": 200 
   };
   const basePrice = prices[formData.material] || 0;
-  const totalPrice = basePrice + (formData.is_fast_track ? 200 : 0);
+  const totalPrice = formData.is_fast_track ? Math.round(basePrice * 1.30) : basePrice;
+  const fastTrackSurcharge = totalPrice - basePrice;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -220,7 +223,8 @@ function DentistForm({ user, onSuccess }) {
     const payload = {
       ...formData,
       dentist_name: user.name,
-      total_price: totalPrice
+      total_price: totalPrice,
+      stl_file_name: formData.impression_type === "NUMERIQUE" ? formData.stl_file_name : ""
     };
 
     try {
@@ -327,6 +331,62 @@ function DentistForm({ user, onSuccess }) {
               <span className="text-sky-400 font-bold font-mono tracking-wider">{formData.tooth_number || 'Aucune'}</span>
             </div>
           </div>
+
+          {/* ── Impression Type Toggle ── */}
+          <div className="col-span-2">
+            <label className="block text-sm text-gray-400 mb-2">Type d'Empreinte</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button"
+                onClick={() => setFormData({...formData, impression_type: "PHYSIQUE", stl_file_name: ""})}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
+                  formData.impression_type === "PHYSIQUE"
+                    ? "ring-2 ring-sky-500 bg-sky-900/30 border-sky-500 text-white"
+                    : "bg-black/40 border-white/10 text-gray-400 hover:border-white/30"
+                }`}
+              >
+                📦 Empreinte Physique (Collecte Coursier)
+              </button>
+              <button type="button"
+                onClick={() => setFormData({...formData, impression_type: "NUMERIQUE"})}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
+                  formData.impression_type === "NUMERIQUE"
+                    ? "ring-2 ring-violet-500 bg-violet-900/30 border-violet-500 text-white"
+                    : "bg-black/40 border-white/10 text-gray-400 hover:border-white/30"
+                }`}
+              >
+                💻 Empreinte Numérique (Fichier .STL)
+              </button>
+            </div>
+          </div>
+
+          {/* ── STL File Drop Zone (shown only when NUMERIQUE) ── */}
+          {formData.impression_type === "NUMERIQUE" && (
+            <div className="col-span-2">
+              <div className="bg-white/5 border-2 border-dashed border-violet-500/40 rounded-xl p-6 text-center hover:border-violet-400/60 transition-colors">
+                <Upload className="w-8 h-8 text-violet-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-300 mb-3">Glissez votre fichier .STL / .PLY ou cliquez pour sélectionner</p>
+                <input
+                  type="file"
+                  accept=".stl,.ply"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) setFormData({...formData, stl_file_name: file.name});
+                  }}
+                  className="hidden"
+                  id="stl-upload"
+                />
+                <label htmlFor="stl-upload" className="cursor-pointer inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                  <Upload className="w-4 h-4" /> Parcourir
+                </label>
+                {formData.stl_file_name && (
+                  <div className="mt-3 inline-flex items-center gap-2 bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-mono px-3 py-1.5 rounded-lg">
+                    📄 {formData.stl_file_name}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Clinical Lightbox */}
           <div className="col-span-2 bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
             <img src={shadeGuideImg} alt="Guide de Teintes VITA" className="w-full object-contain rounded-lg bg-white p-2" />
@@ -389,10 +449,11 @@ function DentistForm({ user, onSuccess }) {
             </div>
           </div>
           
+          {/* ── Urgence 30% Toggle ── */}
           <div className="col-span-2 border border-white/10 rounded-xl p-4 flex items-center justify-between bg-black/20">
             <div>
-              <div className="font-medium flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" /> Fast-Track</div>
-              <div className="text-sm text-gray-400">Priorité labo (+200 MAD)</div>
+              <div className="font-medium flex items-center gap-2"><Zap className="w-4 h-4 text-amber-400" /> Urgence 24h-48h</div>
+              <div className="text-sm text-gray-400">Majoration +30% ({fastTrackSurcharge > 0 ? `+${fastTrackSurcharge} MAD` : "Désactivé"})</div>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" className="sr-only peer" checked={formData.is_fast_track} onChange={e => setFormData({...formData, is_fast_track: e.target.checked})} />
@@ -411,16 +472,25 @@ function DentistForm({ user, onSuccess }) {
         </form>
       </div>
 
+      {/* ── Devis Panel ── */}
       <div className="col-span-1">
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 sticky top-24">
           <h3 className="text-lg font-semibold mb-4 text-gray-200">Devis Estimatif</h3>
           <div className="space-y-3 mb-6">
             <div className="flex justify-between text-gray-400"><span>Base ({formData.material})</span><span>{basePrice} MAD</span></div>
-            {formData.is_fast_track && <div className="flex justify-between text-amber-400"><span>Option Fast-Track</span><span>+200 MAD</span></div>}
+            {formData.is_fast_track && <div className="flex justify-between text-amber-400"><span>⚡ Urgence +30%</span><span>+{fastTrackSurcharge} MAD</span></div>}
             <div className="border-t border-white/10 pt-3 flex justify-between font-bold text-lg text-white">
               <span>Total</span><span>{totalPrice} MAD</span>
             </div>
+            <div className="text-xs text-gray-500 text-right">
+              {formData.is_fast_track ? "Délai : 24h-48h" : "Délai : 3 à 5 jours"}
+            </div>
           </div>
+          {formData.impression_type === "NUMERIQUE" && formData.stl_file_name && (
+            <div className="mb-4 text-xs text-violet-300 bg-violet-500/10 border border-violet-500/20 p-2 rounded-lg flex items-center gap-2">
+              💻 Fichier: {formData.stl_file_name}
+            </div>
+          )}
           <button form="dentistForm" type="submit" disabled={loading} className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg disabled:opacity-50">
             {loading ? "Envoi..." : "Envoyer au Labo"}
           </button>
@@ -432,11 +502,25 @@ function DentistForm({ user, onSuccess }) {
 
 function DentistList({ orders }) {
   const statusColors = {
-    EN_ATTENTE: "bg-gray-500/20 text-gray-300 border-gray-500/30",
-    EN_PRODUCTION: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    A_CONFIRMER: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+    SALLE_CAO: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    USINAGE_CNC: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
+    FRITTAGE_9H: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+    CONTROLE_QUALITE: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
     PRET_EXPEDITION: "bg-amber-500/20 text-amber-300 border-amber-500/30",
     EN_ROUTE: "bg-purple-500/20 text-purple-300 border-purple-500/30",
     LIVRE: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+  };
+
+  const statusLabels = {
+    A_CONFIRMER: "Réception",
+    SALLE_CAO: "CAO",
+    USINAGE_CNC: "Usinage",
+    FRITTAGE_9H: "Frittage",
+    CONTROLE_QUALITE: "Contrôle",
+    PRET_EXPEDITION: "Prêt Expédition",
+    EN_ROUTE: "En Route",
+    LIVRE: "Livré"
   };
 
   if (orders.length === 0) return <div className="text-gray-400">Aucune commande.</div>;
@@ -449,13 +533,14 @@ function DentistList({ orders }) {
             <div className="flex items-center gap-3 mb-1">
               <span className="font-bold text-lg">{o.patient_ref}</span>
               <span className="bg-black/50 px-2 py-1 rounded text-xs text-gray-400">Dent {o.tooth_number}</span>
-              {o.is_fast_track && <span className="bg-amber-500/20 text-amber-400 px-2 py-1 rounded flex items-center gap-1 text-xs font-medium"><Zap className="w-3 h-3"/> Fast</span>}
+              {o.is_fast_track && <span className="bg-amber-500/20 text-amber-400 px-2 py-1 rounded flex items-center gap-1 text-xs font-medium"><Zap className="w-3 h-3"/> Urgence</span>}
+              {o.impression_type === "NUMERIQUE" && <span className="bg-violet-500/20 text-violet-300 px-2 py-1 rounded text-xs font-medium">💻 .STL</span>}
             </div>
             <div className="text-sm text-gray-400">{o.material} - Teinte {o.shade}</div>
           </div>
           <div className="text-right">
-            <div className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border ${statusColors[o.status]}`}>
-              {o.status.replace("_", " ")}
+            <div className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border ${statusColors[o.status] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
+              {statusLabels[o.status] || o.status}
             </div>
             {o.delivery_date && <div className="text-xs text-gray-400 mt-2 flex items-center justify-end gap-1"><Clock className="w-3 h-3"/> Prévu: {o.delivery_date}</div>}
           </div>
@@ -464,6 +549,10 @@ function DentistList({ orders }) {
     </div>
   );
 }
+
+// ════════════════════════════════════════
+//  LAB PORTAL
+// ════════════════════════════════════════
 
 function LabPortal({ orders, refresh }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -491,7 +580,7 @@ function LabPortal({ orders, refresh }) {
           onClick={() => setActiveTab('commandes')}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'commandes' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
         >
-          Commandes
+          Interface Technicien CFAO
         </button>
         <button
           onClick={() => setActiveTab('facturation')}
@@ -540,141 +629,271 @@ function LabPortal({ orders, refresh }) {
           </div>
         )}
 
+        {/* ════ COMMANDES TAB → INTERFACE TECHNICIEN CFAO ════ */}
         {activeTab === 'commandes' && (
-          <div className="grid grid-cols-3 gap-6 items-start">
-            <div className="bg-black/20 border border-white/5 rounded-2xl p-4">
-              <h3 className="font-semibold text-gray-300 mb-4 flex items-center justify-between">
-                À Confirmer <span className="bg-white/10 px-2 py-0.5 rounded-full text-xs">{orders.filter(o => o.status === 'EN_ATTENTE').length}</span>
-              </h3>
-              <div className="space-y-4">
-                {orders.filter(o => o.status === 'EN_ATTENTE').map(o => <LabCardNew key={o.id} order={o} onAccept={(date) => patchOrder(o.id, { status: "EN_PRODUCTION", delivery_date: date })} />)}
-              </div>
-            </div>
-            <div className="bg-black/20 border border-white/5 rounded-2xl p-4">
-              <h3 className="font-semibold text-gray-300 mb-4 flex items-center justify-between">
-                En Production <span className="bg-white/10 px-2 py-0.5 rounded-full text-xs">{orders.filter(o => o.status === 'EN_PRODUCTION').length}</span>
-              </h3>
-              <div className="space-y-4">
-                {orders.filter(o => o.status === 'EN_PRODUCTION').map(o => <LabCardProd key={o.id} order={o} onReady={() => patchOrder(o.id, { status: "PRET_EXPEDITION" })} />)}
-              </div>
-            </div>
-            <div className="bg-black/20 border border-white/5 rounded-2xl p-4">
-              <h3 className="font-semibold text-gray-300 mb-4 flex items-center justify-between">
-                Prêt (Attente Coursier) <span className="bg-white/10 px-2 py-0.5 rounded-full text-xs">{orders.filter(o => o.status === 'PRET_EXPEDITION').length}</span>
-              </h3>
-              <div className="space-y-4">
-                {orders.filter(o => o.status === 'PRET_EXPEDITION').map(o => (
-                  <div key={o.id} className="bg-white/5 border border-white/10 p-4 rounded-xl opacity-75">
-                    <div className="font-bold">{o.patient_ref}</div>
-                    <div className="text-xs text-gray-400 mt-1">{o.dentist_name}</div>
-                    <div className="mt-3 text-xs text-amber-400 border border-amber-400/20 bg-amber-400/10 p-2 rounded flex justify-center">En attente de ramassage</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <CfaoPipeline orders={orders} patchOrder={patchOrder} />
         )}
 
+        {/* ════ FACTURATION TAB → FLUX FINANCIER MAROCAIN ════ */}
         {activeTab === 'facturation' && (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 overflow-x-auto">
-            <h3 className="text-lg font-semibold text-white mb-6">Factures et Règlements</h3>
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="text-xs text-slate-500 uppercase bg-black/20 border-b border-white/10">
-                <tr>
-                  <th className="px-4 py-3 rounded-tl-xl">Réf. Patient</th>
-                  <th className="px-4 py-3">Cabinet</th>
-                  <th className="px-4 py-3">Montant (MAD)</th>
-                  <th className="px-4 py-3">Statut Paiement</th>
-                  <th className="px-4 py-3 rounded-tr-xl">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-4 font-medium text-white">PAT-1042</td>
-                  <td className="px-4 py-4">Dr. Dupont</td>
-                  <td className="px-4 py-4 font-mono">1 200</td>
-                  <td className="px-4 py-4">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-semibold">Payé</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <button className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-1">
-                      PDF
-                    </button>
-                  </td>
-                </tr>
-                <tr className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-4 font-medium text-white">PAT-0985</td>
-                  <td className="px-4 py-4">Dr. Berrada</td>
-                  <td className="px-4 py-4 font-mono">2 400</td>
-                  <td className="px-4 py-4">
-                    <span className="bg-orange-500/20 text-orange-400 px-2 py-1 rounded text-xs font-semibold">En attente</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <button className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-1">
-                      PDF
-                    </button>
-                  </td>
-                </tr>
-                <tr className="hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-4 font-medium text-white">PAT-1102</td>
-                  <td className="px-4 py-4">Centre Dentaire Al Noor</td>
-                  <td className="px-4 py-4 font-mono">800</td>
-                  <td className="px-4 py-4">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-semibold">Payé</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <button className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-1">
-                      PDF
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <BillingPipeline orders={orders} patchOrder={patchOrder} />
         )}
       </div>
     </div>
   );
 }
 
-function LabCardNew({ order, onAccept }) {
-  const [date, setDate] = useState("");
+// ── CFAO Production Pipeline ──
+
+const CFAO_STAGES = [
+  { key: "A_CONFIRMER",      label: "1. Réception & Modèle",       badge: null,                                     nextStatus: "SALLE_CAO",        nextLabel: "Envoyer en Conception ➔",       needsDate: true },
+  { key: "SALLE_CAO",        label: "2. Salle Conception (CAO)",   badge: "Génération .STL + .constructionInfo",     nextStatus: "USINAGE_CNC",      nextLabel: "Envoyer vers CNC ➔",            needsDate: false },
+  { key: "USINAGE_CNC",      label: "3. Calcul CNC & Usinage",    badge: "Fraisage 5-Axes",                         nextStatus: "FRITTAGE_9H",      nextLabel: "Lancer Frittage (9h) ➔",        needsDate: false },
+  { key: "FRITTAGE_9H",      label: "4. Four de Frittage (9h)",    badge: "🔥 Cuisson 1500°C + Refroidissement",     nextStatus: "CONTROLE_QUALITE", nextLabel: "Passer au Contrôle ➔",          needsDate: false },
+  { key: "CONTROLE_QUALITE", label: "5. Phase de Contrôle",        badge: "Vérification & Glaçage",                  nextStatus: "PRET_EXPEDITION",  nextLabel: "Valider & Appeler Coursier ➔",  needsDate: false },
+];
+
+const stageBorderColors = {
+  A_CONFIRMER:      "border-gray-500/30",
+  SALLE_CAO:        "border-blue-500/30",
+  USINAGE_CNC:      "border-indigo-500/30",
+  FRITTAGE_9H:      "border-orange-500/30",
+  CONTROLE_QUALITE: "border-cyan-500/30",
+};
+
+const stageAccentColors = {
+  A_CONFIRMER:      "text-gray-400",
+  SALLE_CAO:        "text-blue-400",
+  USINAGE_CNC:      "text-indigo-400",
+  FRITTAGE_9H:      "text-orange-400",
+  CONTROLE_QUALITE: "text-cyan-400",
+};
+
+function CfaoPipeline({ orders, patchOrder }) {
   return (
-    <div className="bg-white/10 border border-white/10 p-4 rounded-xl shadow-lg relative overflow-hidden">
-      {order.is_fast_track && <div className="absolute top-0 right-0 w-16 h-16"><div className="absolute transform rotate-45 bg-amber-500 text-black text-[10px] font-bold py-1 right-[-35px] top-[10px] w-[100px] text-center">FAST</div></div>}
+    <div className="space-y-6">
+      {CFAO_STAGES.map(stage => {
+        const stageOrders = orders.filter(o => o.status === stage.key);
+        return (
+          <div key={stage.key} className={`bg-black/20 border ${stageBorderColors[stage.key]} rounded-2xl p-5`}>
+            <h3 className={`font-semibold mb-4 flex items-center justify-between ${stageAccentColors[stage.key]}`}>
+              {stage.label}
+              <span className="bg-white/10 text-white px-2.5 py-0.5 rounded-full text-xs">{stageOrders.length}</span>
+            </h3>
+            {stageOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande à cette étape.</div>}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {stageOrders.map(o => (
+                <CfaoCard key={o.id} order={o} stage={stage} patchOrder={patchOrder} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CfaoCard({ order, stage, patchOrder }) {
+  const [date, setDate] = useState(order.delivery_date || "");
+
+  const handleAdvance = () => {
+    const payload = { status: stage.nextStatus };
+    if (stage.needsDate && date) {
+      payload.delivery_date = date;
+    }
+    patchOrder(order.id, payload);
+  };
+
+  return (
+    <div className="bg-white/5 border border-white/10 p-4 rounded-xl shadow-lg relative overflow-hidden">
+      {order.is_fast_track && (
+        <div className="absolute top-0 right-0 w-16 h-16">
+          <div className="absolute transform rotate-45 bg-amber-500 text-black text-[10px] font-bold py-1 right-[-35px] top-[10px] w-[100px] text-center">URGENCE</div>
+        </div>
+      )}
       <div className="font-bold text-lg">{order.patient_ref}</div>
       <div className="text-sm text-gray-400 mb-2">{order.dentist_name}</div>
+
+      {/* Order details */}
       <div className="text-xs text-gray-300 grid grid-cols-2 gap-2 mb-3 bg-black/30 p-2 rounded">
         <div>Dent: {order.tooth_number}</div>
         <div>Teinte: {order.shade}</div>
-        <div className="col-span-2">Mat: {order.material}</div>
+        <div>Mat: {order.material}</div>
+        <div>{order.total_price} MAD</div>
       </div>
-      <div className="flex gap-2">
-        <input type="date" className="bg-black/50 border border-white/10 rounded text-xs p-2 flex-1" value={date} onChange={e => setDate(e.target.value)} />
-        <button onClick={() => date && onAccept(date)} disabled={!date} className="bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white p-2 rounded flex items-center justify-center">
-          <Check className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
 
-function LabCardProd({ order, onReady }) {
-  return (
-    <div className="bg-white/10 border border-blue-500/30 p-4 rounded-xl shadow-lg">
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <div className="font-bold text-lg">{order.patient_ref}</div>
-          <div className="text-sm text-gray-400">{order.dentist_name}</div>
-        </div>
-        <div className="text-xs text-blue-300 border border-blue-500/30 bg-blue-500/10 px-2 py-1 rounded">Prévu: {order.delivery_date}</div>
+      {/* Impression badge */}
+      <div className={`text-xs mb-3 px-2 py-1 rounded inline-flex items-center gap-1 ${
+        order.impression_type === "NUMERIQUE"
+          ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+          : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+      }`}>
+        {order.impression_type === "NUMERIQUE" ? `💻 Fichier .STL${order.stl_file_name ? ` — ${order.stl_file_name}` : ""}` : "📦 Empreinte Physique"}
       </div>
-      <button onClick={onReady} className="w-full mt-3 bg-white/10 hover:bg-white/20 border border-white/20 py-2 rounded text-sm transition-colors flex items-center justify-center gap-2">
-        <Package className="w-4 h-4" /> Générer QR Expédition
+
+      {/* Stage badge */}
+      {stage.badge && (
+        <div className="text-xs bg-white/5 border border-white/10 text-slate-300 px-2 py-1 rounded mb-3">
+          {stage.badge}
+        </div>
+      )}
+
+      {/* Date picker for A_CONFIRMER */}
+      {stage.needsDate && (
+        <div className="mb-3">
+          <label className="block text-xs text-gray-500 mb-1">Date de livraison estimée</label>
+          <input type="date" className="w-full bg-black/50 border border-white/10 rounded text-xs p-2 text-white" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+      )}
+
+      {/* Advance button */}
+      <button
+        onClick={handleAdvance}
+        className="w-full mt-1 bg-white/10 hover:bg-white/20 border border-white/20 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 font-medium"
+      >
+        <ChevronRight className="w-4 h-4" /> {stage.nextLabel}
       </button>
     </div>
   );
 }
+
+// ── Moroccan Billing Pipeline ──
+
+function BillingPipeline({ orders, patchOrder }) {
+  const commandeOrders  = orders.filter(o => (o.billing_stage || "COMMANDE") === "COMMANDE");
+  const situationOrders = orders.filter(o => o.billing_stage === "SITUATION");
+  const factureOrders   = orders.filter(o => o.billing_stage === "FACTURE");
+
+  const situationTotal = situationOrders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+
+  const bulkPatch = async (ids, payload) => {
+    for (const id of ids) {
+      await fetch(`${API_URL}${id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }
+    // refresh handled via parent
+    patchOrder(ids[0], {}); // triggers refresh
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* ── Step 1: Commandes (Bons de Livraison) ── */}
+      <div className="bg-black/20 border border-white/10 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-white flex items-center gap-2">
+            <span className="bg-sky-500/20 text-sky-400 text-xs font-bold px-2 py-0.5 rounded">1</span>
+            Commandes (Bons de Livraison)
+          </h3>
+          <span className="text-xs text-slate-500">{commandeOrders.length} commande(s)</span>
+        </div>
+        {commandeOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande en attente de situation.</div>}
+        <div className="space-y-3">
+          {commandeOrders.map(o => (
+            <div key={o.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold">{o.patient_ref}</span>
+                  <span className="text-xs text-gray-400">{o.dentist_name}</span>
+                  <span className="text-xs text-sky-400 font-mono">{o.total_price || 0} MAD</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">{o.material} — Dent {o.tooth_number}</div>
+              </div>
+              <button
+                onClick={() => patchOrder(o.id, { billing_stage: "SITUATION" })}
+                className="bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/30 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Inclure dans la Situation ➔
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Step 2: État de Situation (Relevé Mensuel) ── */}
+      <div className="bg-black/20 border border-amber-500/20 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-white flex items-center gap-2">
+            <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-2 py-0.5 rounded">2</span>
+            État de Situation (Relevé Mensuel)
+          </h3>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-slate-500">{situationOrders.length} commande(s)</span>
+            <span className="text-sm font-bold text-amber-400 font-mono">{situationTotal.toLocaleString()} MAD</span>
+          </div>
+        </div>
+        {situationOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande en situation.</div>}
+        <div className="space-y-3 mb-4">
+          {situationOrders.map(o => (
+            <div key={o.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold">{o.patient_ref}</span>
+                  <span className="text-xs text-gray-400">{o.dentist_name}</span>
+                  <span className="text-xs text-amber-400 font-mono">{o.total_price || 0} MAD</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">{o.material} — Dent {o.tooth_number}</div>
+              </div>
+              <span className="bg-amber-500/20 text-amber-300 px-2 py-1 rounded text-xs font-semibold">En Situation</span>
+            </div>
+          ))}
+        </div>
+        {situationOrders.length > 0 && (
+          <div className="border-t border-white/10 pt-4 flex items-center justify-between">
+            <div>
+              <div className="text-sm text-slate-300">Total à facturer</div>
+              <div className="text-2xl font-bold text-amber-400 font-mono">{situationTotal.toLocaleString()} MAD</div>
+            </div>
+            <button
+              onClick={() => bulkPatch(situationOrders.map(o => o.id), { billing_stage: "FACTURE" })}
+              className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-lg"
+            >
+              Valider Situation & Émettre Facture ➔
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Step 3: Facturation Définitive ── */}
+      <div className="bg-black/20 border border-emerald-500/20 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-white flex items-center gap-2">
+            <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-0.5 rounded">3</span>
+            Facturation Définitive
+          </h3>
+          <span className="text-xs text-slate-500">{factureOrders.length} facture(s)</span>
+        </div>
+        {factureOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune facture émise.</div>}
+        <div className="space-y-3">
+          {factureOrders.map(o => (
+            <div key={o.id} className="bg-white/5 border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold">{o.patient_ref}</span>
+                  <span className="text-xs text-gray-400">{o.dentist_name}</span>
+                  <span className="text-xs text-emerald-400 font-mono">{o.total_price || 0} MAD</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">{o.material} — Dent {o.tooth_number}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded text-xs font-semibold">✅ Facturé</span>
+                <button className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-1">
+                  <Download className="w-3 h-3" /> 📄 Télécharger Facture PDF
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════
+//  COURIER PORTAL (unchanged)
+// ════════════════════════════════════════
 
 function CourierPortal({ orders, refresh }) {
   const [verifyingId, setVerifyingId] = useState(null);
@@ -780,7 +999,7 @@ function CourierPortal({ orders, refresh }) {
                 </div>
 
                 {verifyingId === o.id ? (
-                  <div className="bg-black/50 border border-white/10 p-3 rounded-xl flex gap-2 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="bg-black/50 border border-white/10 p-3 rounded-xl flex gap-2">
                     <input 
                       type="text" 
                       placeholder="Code PIN (Ex: 1234)" 

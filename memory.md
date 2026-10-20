@@ -60,3 +60,30 @@
   - **Portail Coursier** : Interface liste mobile-friendly pour les statuts `EN_ROUTE` et `LIVRE`.
   - **Branding** : Intégration du logo personnalisé `logo.png` (effet néon glassmorphism).
 - **Packaging Final** : Re-build complet via Vite, synchronisation avec le `frontend_build` de Django, génération d'un nouvel exécutable via PyInstaller, et zippage dans `cabinet_backend\dist\Cabinet2_App.zip`. Nettoyage des artefacts de build redondants.
+### 5. Intégration Métier Prothésiste CFAO & Flux Financier Marocain
+- **Backend API (Django REST)** :
+  - Mise à jour du modèle `Prescription` :
+    - `impression_type` (`PHYSIQUE`, `NUMERIQUE`).
+    - `stl_file_name` (nom du fichier numérique téléversé).
+    - Pipeline CFAO prothésiste : `A_CONFIRMER`, `SALLE_CAO`, `USINAGE_CNC`, `FRITTAGE_9H`, `CONTROLE_QUALITE`, `PRET_EXPEDITION`, `EN_ROUTE`, `LIVRE`.
+    - Remplacement de `payment_status` par `billing_stage` (`COMMANDE`, `SITUATION`, `FACTURE`).
+  - Serializer mis à jour avec permissions en écriture via `PATCH`.
+  - Application de la migration `0005_remove_prescription_payment_status_and_more.py`.
+  - Réinitialisation propre de la base SQLite (`db.sqlite3`) avec migrations rejouées.
+- **Frontend UI (React & Tailwind)** :
+  - **Portail Dentiste** :
+    - Sélecteur de type d'empreinte (Physique vs Numérique .STL).
+    - Zone de drop glassmorphism pour fichiers `.stl`/`.ply`.
+    - Calcul de l'urgence 24h-48h (+30% sur le prix de base).
+    - Affichage synchronisé des nouveaux statuts CFAO dans la liste des commandes.
+  - **Portail Labo (Onglet Commandes)** :
+    - Pipeline de production CFAO en 5 étapes séquentielles avec progression `PATCH`.
+    - Gestion sécurisée de la date de livraison estimée sur `A_CONFIRMER`.
+    - Badges techniques par étape (Exocad, fraisage 5-axes, frittage 1500°C 9h, contrôle/glaçage).
+  - **Portail Labo (Onglet Facturation)** :
+    - Cycle financier marocain en 3 étapes : Bons de Commande -> Relevé de Situation mensuel (cumul MAD en temps réel & validation groupée) -> Facturation Définitive (téléchargement PDF).
+- **Packaging & Déploiement Standalone** :
+  - Rebuild des assets de production Vite (`npm run build`).
+  - Copie dans `cabinet_backend/frontend_build`.
+  - Recompilation binaire via PyInstaller (`Cabinet2.spec`).
+  - Archivage final compressé dans `cabinet_backend/dist/Cabinet2_App.zip` (~25.5 Mo).

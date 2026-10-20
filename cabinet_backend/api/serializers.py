@@ -8,8 +8,8 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     Enforces the "Verrou Sanitaire": rejects any submission where
     disinfected is False — mirroring the frontend lock.
 
-    On CREATE: status and delivery_date are read-only (server defaults apply).
-    On PATCH:  status and delivery_date become writable so Lab/Courier can update.
+    On CREATE: status, delivery_date, billing_stage are read-only (server defaults apply).
+    On PATCH:  all fields become writable so Lab/Courier can update.
     """
 
     class Meta:
@@ -19,10 +19,11 @@ class PrescriptionSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # On creation (no instance yet), lock status & delivery_date as read-only
+        # On creation (no instance yet), lock workflow fields as read-only
         if self.instance is None:
             self.fields["status"].read_only = True
             self.fields["delivery_date"].read_only = True
+            self.fields["billing_stage"].read_only = True
 
     def validate_disinfected(self, value):
         if not value:
