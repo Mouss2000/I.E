@@ -118,6 +118,7 @@
     - Synchronisation dans `cabinet_backend/frontend_build`.
     - Recompilation complète PyInstaller (`Cabinet2.spec`).
     - Archive standalone finale mise à jour : [`cabinet_backend/dist/Cabinet2_App.zip`](file:///C:/Users/SetupGame/OneDrive/Desktop/New%20folder/Soutenance/Projet%20Innov/cabinet_backend/dist/Cabinet2_App.zip) (25.5 Mo, 10/21/2026).
+- **Git** : Commit `a65edce` poussé sur `origin/main` (`https://github.com/Mouss2000/I.E.git`).
 
 ## Référence Rapide
 
