@@ -9,20 +9,26 @@ class Prescription(models.Model):
     Patient identity is anonymised (patient_ref = PAT-XXXX) before reaching the lab,
     in compliance with Loi 09-08 / CNDP.
 
-    CFAO Technician Pipeline:
-      Dentist  → A_CONFIRMER
-      Lab      → SALLE_CAO → USINAGE_CNC → FRITTAGE_9H → CONTROLE_QUALITE → PRET_EXPEDITION
-      Courier  → EN_ROUTE → LIVRE
+    Two-Way Courier + CFAO Technician Pipeline:
+      PHYSIQUE:   Dentist → ATTENTE_RAMASSAGE → EN_ROUTE_LABO → A_CONFIRMER
+      NUMERIQUE:  Dentist → A_CONFIRMER (bypass courier)
+      Lab:        SALLE_CAO → USINAGE_CNC → FRITTAGE_9H → CONTROLE_QUALITE → PRET_EXPEDITION
+      Courier:    EN_ROUTE_CABINET → LIVRE
     """
 
     class Status(models.TextChoices):
+        # --- Pre-Lab Courier Phase (Physical Impressions Only) ---
+        ATTENTE_RAMASSAGE = "ATTENTE_RAMASSAGE", "En attente de ramassage coursier"
+        EN_ROUTE_LABO     = "EN_ROUTE_LABO",     "Coursier en route vers le labo"
+        # --- Lab CFAO Pipeline ---
         A_CONFIRMER       = "A_CONFIRMER",       "Réception / Modèle"
         SALLE_CAO         = "SALLE_CAO",         "Conception Exocad / Fichier Construction"
         USINAGE_CNC       = "USINAGE_CNC",       "Calcul CNC & Usinage"
         FRITTAGE_9H       = "FRITTAGE_9H",       "Four de Frittage 9h & Refroidissement"
         CONTROLE_QUALITE  = "CONTROLE_QUALITE",  "Phase de Contrôle & Glaçage"
         PRET_EXPEDITION   = "PRET_EXPEDITION",   "Prêt pour Coursier"
-        EN_ROUTE          = "EN_ROUTE",          "En livraison"
+        # --- Final Delivery Phase ---
+        EN_ROUTE_CABINET  = "EN_ROUTE_CABINET",  "En livraison vers le cabinet"
         LIVRE             = "LIVRE",             "Livré au Cabinet"
 
     class ImpressionType(models.TextChoices):
@@ -80,8 +86,15 @@ class Prescription(models.Model):
         ordering = ["-created_at"]
 
     def save(self, *args, **kwargs):
-        if self.pk is None and not self.delivery_pin:
-            self.delivery_pin = str(random.randint(1000, 9999))
+        if self.pk is None:
+            # Auto-generate delivery PIN
+            if not self.delivery_pin:
+                self.delivery_pin = str(random.randint(1000, 9999))
+            # Smart routing based on impression type
+            if self.impression_type == self.ImpressionType.PHYSIQUE:
+                self.status = self.Status.ATTENTE_RAMASSAGE
+            else:
+                self.status = self.Status.A_CONFIRMER
         super().save(*args, **kwargs)
 
     def __str__(self):

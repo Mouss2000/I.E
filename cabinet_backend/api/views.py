@@ -14,3 +14,16 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     """
     queryset = Prescription.objects.all()
     serializer_class = PrescriptionSerializer
+
+    def perform_create(self, serializer):
+        impression_type = self.request.data.get("impression_type", "PHYSIQUE")
+        if impression_type == "NUMERIQUE":
+            serializer.save(
+                impression_type=impression_type,
+                status=Prescription.Status.A_CONFIRMER,
+            )
+        else:
+            serializer.save(
+                impression_type="PHYSIQUE",
+                status=Prescription.Status.ATTENTE_RAMASSAGE,
+            )

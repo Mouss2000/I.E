@@ -5,4 +5,5 @@ __pycache__/
 *.pyc
 .env
 cabinet_backend/build/
+cabinet_backend/dist/Cabinet2/
 !cabinet_backend/dist/Cabinet2_App.zip

@@ -221,10 +221,16 @@ function DentistForm({ user, onSuccess }) {
     setLoading(true);
     
     const payload = {
-      ...formData,
+      patient_ref: formData.patient_ref,
+      tooth_number: parseInt(formData.tooth_number, 10) || formData.tooth_number,
+      shade: formData.shade,
+      material: formData.material,
+      impression_type: formData.impression_type,
+      stl_file_name: formData.impression_type === "NUMERIQUE" ? formData.stl_file_name : "",
+      is_fast_track: formData.is_fast_track,
+      disinfected: formData.disinfected,
       dentist_name: user.name,
       total_price: totalPrice,
-      stl_file_name: formData.impression_type === "NUMERIQUE" ? formData.stl_file_name : ""
     };
 
     try {
@@ -502,23 +508,29 @@ function DentistForm({ user, onSuccess }) {
 
 function DentistList({ orders }) {
   const statusColors = {
+    ATTENTE_RAMASSAGE: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    EN_ROUTE_LABO: "bg-blue-500/20 text-blue-300 border-blue-500/30",
     A_CONFIRMER: "bg-gray-500/20 text-gray-300 border-gray-500/30",
     SALLE_CAO: "bg-blue-500/20 text-blue-300 border-blue-500/30",
     USINAGE_CNC: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
     FRITTAGE_9H: "bg-orange-500/20 text-orange-300 border-orange-500/30",
     CONTROLE_QUALITE: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
     PRET_EXPEDITION: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    EN_ROUTE_CABINET: "bg-purple-500/20 text-purple-300 border-purple-500/30",
     EN_ROUTE: "bg-purple-500/20 text-purple-300 border-purple-500/30",
     LIVRE: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
   };
 
   const statusLabels = {
+    ATTENTE_RAMASSAGE: "Attente Ramassage",
+    EN_ROUTE_LABO: "En Route Labo",
     A_CONFIRMER: "Réception",
     SALLE_CAO: "CAO",
     USINAGE_CNC: "Usinage",
     FRITTAGE_9H: "Frittage",
     CONTROLE_QUALITE: "Contrôle",
     PRET_EXPEDITION: "Prêt Expédition",
+    EN_ROUTE_CABINET: "En Livraison",
     EN_ROUTE: "En Route",
     LIVRE: "Livré"
   };
@@ -645,6 +657,15 @@ function LabPortal({ orders, refresh }) {
 
 // ── CFAO Production Pipeline ──
 
+const CFAO_CHAIN = [
+  "A_CONFIRMER",
+  "SALLE_CAO",
+  "USINAGE_CNC",
+  "FRITTAGE_9H",
+  "CONTROLE_QUALITE",
+  "PRET_EXPEDITION"
+];
+
 const CFAO_STAGES = [
   { key: "A_CONFIRMER",      label: "1. Réception & Modèle",       badge: null,                                     nextStatus: "SALLE_CAO",        nextLabel: "Envoyer en Conception ➔",       needsDate: true },
   { key: "SALLE_CAO",        label: "2. Salle Conception (CAO)",   badge: "Génération .STL + .constructionInfo",     nextStatus: "USINAGE_CNC",      nextLabel: "Envoyer vers CNC ➔",            needsDate: false },
@@ -670,20 +691,73 @@ const stageAccentColors = {
 };
 
 function CfaoPipeline({ orders, patchOrder }) {
+  const [draggedOrder, setDraggedOrder] = useState(null);
+
+  const nextValidStage = draggedOrder
+    ? CFAO_CHAIN[CFAO_CHAIN.indexOf(draggedOrder.status) + 1]
+    : null;
+
+  const handleDrop = (e, targetStageKey) => {
+    e.preventDefault();
+    if (!draggedOrder) return;
+    const currentIndex = CFAO_CHAIN.indexOf(draggedOrder.status);
+    const targetIndex = CFAO_CHAIN.indexOf(targetStageKey);
+
+    // ONLY advance if target row is strictly the next step in the chain
+    if (targetIndex === currentIndex + 1) {
+      patchOrder(draggedOrder.id, { status: targetStageKey });
+    }
+    setDraggedOrder(null);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
   return (
     <div className="space-y-6">
       {CFAO_STAGES.map(stage => {
         const stageOrders = orders.filter(o => o.status === stage.key);
+        const isNextTarget = stage.key === nextValidStage;
+
         return (
-          <div key={stage.key} className={`bg-black/20 border ${stageBorderColors[stage.key]} rounded-2xl p-5`}>
+          <div
+            key={stage.key}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, stage.key)}
+            className={`border rounded-2xl p-5 transition-all duration-200 ${
+              isNextTarget
+                ? "ring-2 ring-emerald-500/50 bg-emerald-900/10 border-emerald-500/40"
+                : `bg-black/20 ${stageBorderColors[stage.key]}`
+            }`}
+          >
             <h3 className={`font-semibold mb-4 flex items-center justify-between ${stageAccentColors[stage.key]}`}>
-              {stage.label}
+              <span className="flex items-center gap-2">
+                {stage.label}
+                {isNextTarget && (
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
+                    Zone de Dépôt Valide
+                  </span>
+                )}
+              </span>
               <span className="bg-white/10 text-white px-2.5 py-0.5 rounded-full text-xs">{stageOrders.length}</span>
             </h3>
-            {stageOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande à cette étape.</div>}
+            {stageOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande à cette étape. Glissez une commande ici.</div>}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {stageOrders.map(o => (
-                <CfaoCard key={o.id} order={o} stage={stage} patchOrder={patchOrder} />
+                <CfaoCard
+                  key={o.id}
+                  order={o}
+                  stage={stage}
+                  patchOrder={patchOrder}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", o.id);
+                    setDraggedOrder(o);
+                  }}
+                  onDragEnd={() => setDraggedOrder(null)}
+                  isDragging={draggedOrder?.id === o.id}
+                />
               ))}
             </div>
           </div>
@@ -693,7 +767,7 @@ function CfaoPipeline({ orders, patchOrder }) {
   );
 }
 
-function CfaoCard({ order, stage, patchOrder }) {
+function CfaoCard({ order, stage, patchOrder, onDragStart, onDragEnd, isDragging }) {
   const [date, setDate] = useState(order.delivery_date || "");
 
   const handleAdvance = () => {
@@ -705,13 +779,23 @@ function CfaoCard({ order, stage, patchOrder }) {
   };
 
   return (
-    <div className="bg-white/5 border border-white/10 p-4 rounded-xl shadow-lg relative overflow-hidden">
+    <div
+      draggable={true}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`bg-white/5 border border-white/10 p-4 rounded-xl shadow-lg relative overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
+        isDragging ? "opacity-30 scale-95 border-emerald-500/50" : "opacity-100 hover:border-white/20"
+      }`}
+    >
       {order.is_fast_track && (
-        <div className="absolute top-0 right-0 w-16 h-16">
+        <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none">
           <div className="absolute transform rotate-45 bg-amber-500 text-black text-[10px] font-bold py-1 right-[-35px] top-[10px] w-[100px] text-center">URGENCE</div>
         </div>
       )}
-      <div className="font-bold text-lg">{order.patient_ref}</div>
+      <div className="flex items-center justify-between">
+        <div className="font-bold text-lg">{order.patient_ref}</div>
+        <span className="text-[10px] text-slate-500 font-mono">⠿ Glisser</span>
+      </div>
       <div className="text-sm text-gray-400 mb-2">{order.dentist_name}</div>
 
       {/* Order details */}
@@ -742,7 +826,12 @@ function CfaoCard({ order, stage, patchOrder }) {
       {stage.needsDate && (
         <div className="mb-3">
           <label className="block text-xs text-gray-500 mb-1">Date de livraison estimée</label>
-          <input type="date" className="w-full bg-black/50 border border-white/10 rounded text-xs p-2 text-white" value={date} onChange={e => setDate(e.target.value)} />
+          <input
+            type="date"
+            className="w-full bg-black/50 border border-white/10 rounded text-xs p-2 text-white"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+          />
         </div>
       )}
 
@@ -757,14 +846,41 @@ function CfaoCard({ order, stage, patchOrder }) {
   );
 }
 
-// ── Moroccan Billing Pipeline ──
+// ── Moroccan Billing Pipeline with Drag & Drop ──
+
+const FINANCE_CHAIN = ["COMMANDE", "SITUATION", "FACTURE"];
 
 function BillingPipeline({ orders, patchOrder }) {
+  const [draggedFinanceOrder, setDraggedFinanceOrder] = useState(null);
+
   const commandeOrders  = orders.filter(o => (o.billing_stage || "COMMANDE") === "COMMANDE");
   const situationOrders = orders.filter(o => o.billing_stage === "SITUATION");
   const factureOrders   = orders.filter(o => o.billing_stage === "FACTURE");
 
   const situationTotal = situationOrders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+
+  const currentStage = draggedFinanceOrder ? (draggedFinanceOrder.billing_stage || "COMMANDE") : null;
+  const nextValidFinance = currentStage
+    ? FINANCE_CHAIN[FINANCE_CHAIN.indexOf(currentStage) + 1]
+    : null;
+
+  const handleDrop = (e, targetStage) => {
+    e.preventDefault();
+    if (!draggedFinanceOrder) return;
+    const currentIndex = FINANCE_CHAIN.indexOf(draggedFinanceOrder.billing_stage || "COMMANDE");
+    const targetIndex = FINANCE_CHAIN.indexOf(targetStage);
+
+    // ONLY advance if target stage is exactly the next step
+    if (targetIndex === currentIndex + 1) {
+      patchOrder(draggedFinanceOrder.id, { billing_stage: targetStage });
+    }
+    setDraggedFinanceOrder(null);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
 
   const bulkPatch = async (ids, payload) => {
     for (const id of ids) {
@@ -774,14 +890,21 @@ function BillingPipeline({ orders, patchOrder }) {
         body: JSON.stringify(payload)
       });
     }
-    // refresh handled via parent
-    patchOrder(ids[0], {}); // triggers refresh
+    patchOrder(ids[0], {});
   };
 
   return (
     <div className="space-y-8">
       {/* ── Step 1: Commandes (Bons de Livraison) ── */}
-      <div className="bg-black/20 border border-white/10 rounded-2xl p-6">
+      <div
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e, "COMMANDE")}
+        className={`border rounded-2xl p-6 transition-all duration-200 ${
+          nextValidFinance === "COMMANDE"
+            ? "ring-2 ring-emerald-500/50 bg-emerald-900/10 border-emerald-500/40"
+            : "bg-black/20 border-white/10"
+        }`}
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-white flex items-center gap-2">
             <span className="bg-sky-500/20 text-sky-400 text-xs font-bold px-2 py-0.5 rounded">1</span>
@@ -792,7 +915,18 @@ function BillingPipeline({ orders, patchOrder }) {
         {commandeOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande en attente de situation.</div>}
         <div className="space-y-3">
           {commandeOrders.map(o => (
-            <div key={o.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
+            <div
+              key={o.id}
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", o.id);
+                setDraggedFinanceOrder(o);
+              }}
+              onDragEnd={() => setDraggedFinanceOrder(null)}
+              className={`bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between cursor-grab active:cursor-grabbing transition-all ${
+                draggedFinanceOrder?.id === o.id ? "opacity-30 scale-95 border-emerald-500/50" : "opacity-100 hover:border-white/20"
+              }`}
+            >
               <div>
                 <div className="flex items-center gap-3">
                   <span className="font-bold">{o.patient_ref}</span>
@@ -801,33 +935,60 @@ function BillingPipeline({ orders, patchOrder }) {
                 </div>
                 <div className="text-xs text-gray-500 mt-1">{o.material} — Dent {o.tooth_number}</div>
               </div>
-              <button
-                onClick={() => patchOrder(o.id, { billing_stage: "SITUATION" })}
-                className="bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/30 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Inclure dans la Situation ➔
-              </button>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-slate-500 font-mono">⠿ Glisser vers Étape 2</span>
+                <button
+                  onClick={() => patchOrder(o.id, { billing_stage: "SITUATION" })}
+                  className="bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/30 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  Inclure dans la Situation ➔
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
       {/* ── Step 2: État de Situation (Relevé Mensuel) ── */}
-      <div className="bg-black/20 border border-amber-500/20 rounded-2xl p-6">
+      <div
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e, "SITUATION")}
+        className={`border rounded-2xl p-6 transition-all duration-200 ${
+          nextValidFinance === "SITUATION"
+            ? "ring-2 ring-emerald-500/50 bg-emerald-900/10 border-emerald-500/40"
+            : "bg-black/20 border-amber-500/20"
+        }`}
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-white flex items-center gap-2">
             <span className="bg-amber-500/20 text-amber-400 text-xs font-bold px-2 py-0.5 rounded">2</span>
             État de Situation (Relevé Mensuel)
+            {nextValidFinance === "SITUATION" && (
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
+                Zone de Dépôt Valide
+              </span>
+            )}
           </h3>
           <div className="flex items-center gap-4">
             <span className="text-xs text-slate-500">{situationOrders.length} commande(s)</span>
             <span className="text-sm font-bold text-amber-400 font-mono">{situationTotal.toLocaleString()} MAD</span>
           </div>
         </div>
-        {situationOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande en situation.</div>}
+        {situationOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande en situation. Glissez une commande ici.</div>}
         <div className="space-y-3 mb-4">
           {situationOrders.map(o => (
-            <div key={o.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
+            <div
+              key={o.id}
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", o.id);
+                setDraggedFinanceOrder(o);
+              }}
+              onDragEnd={() => setDraggedFinanceOrder(null)}
+              className={`bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between cursor-grab active:cursor-grabbing transition-all ${
+                draggedFinanceOrder?.id === o.id ? "opacity-30 scale-95 border-emerald-500/50" : "opacity-100 hover:border-white/20"
+              }`}
+            >
               <div>
                 <div className="flex items-center gap-3">
                   <span className="font-bold">{o.patient_ref}</span>
@@ -836,7 +997,10 @@ function BillingPipeline({ orders, patchOrder }) {
                 </div>
                 <div className="text-xs text-gray-500 mt-1">{o.material} — Dent {o.tooth_number}</div>
               </div>
-              <span className="bg-amber-500/20 text-amber-300 px-2 py-1 rounded text-xs font-semibold">En Situation</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-slate-500 font-mono">⠿ Glisser vers Étape 3</span>
+                <span className="bg-amber-500/20 text-amber-300 px-2 py-1 rounded text-xs font-semibold">En Situation</span>
+              </div>
             </div>
           ))}
         </div>
@@ -857,15 +1021,28 @@ function BillingPipeline({ orders, patchOrder }) {
       </div>
 
       {/* ── Step 3: Facturation Définitive ── */}
-      <div className="bg-black/20 border border-emerald-500/20 rounded-2xl p-6">
+      <div
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e, "FACTURE")}
+        className={`border rounded-2xl p-6 transition-all duration-200 ${
+          nextValidFinance === "FACTURE"
+            ? "ring-2 ring-emerald-500/50 bg-emerald-900/10 border-emerald-500/40"
+            : "bg-black/20 border-emerald-500/20"
+        }`}
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-white flex items-center gap-2">
             <span className="bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-0.5 rounded">3</span>
             Facturation Définitive
+            {nextValidFinance === "FACTURE" && (
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
+                Zone de Dépôt Valide
+              </span>
+            )}
           </h3>
           <span className="text-xs text-slate-500">{factureOrders.length} facture(s)</span>
         </div>
-        {factureOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune facture émise.</div>}
+        {factureOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune facture émise. Glissez une commande validée ici.</div>}
         <div className="space-y-3">
           {factureOrders.map(o => (
             <div key={o.id} className="bg-white/5 border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between">
@@ -892,7 +1069,7 @@ function BillingPipeline({ orders, patchOrder }) {
 }
 
 // ════════════════════════════════════════
-//  COURIER PORTAL (unchanged)
+//  COURIER PORTAL (Two-Way Routing)
 // ════════════════════════════════════════
 
 function CourierPortal({ orders, refresh }) {
@@ -916,123 +1093,195 @@ function CourierPortal({ orders, refresh }) {
     }
   };
 
-  const toPickup = orders.filter(o => o.status === 'PRET_EXPEDITION');
-  const inTransit = orders.filter(o => o.status === 'EN_ROUTE');
+  // Phase 1: Pickup physical impressions from dental cabinets
+  const phase1Orders = orders.filter(
+    o => o.status === "ATTENTE_RAMASSAGE" || o.status === "EN_ROUTE_LABO"
+  );
+
+  // Phase 2: Deliver completed prosthetics to dental cabinets
+  const phase2Orders = orders.filter(
+    o => o.status === "PRET_EXPEDITION" || o.status === "EN_ROUTE_CABINET"
+  );
 
   return (
-    <div className="max-w-md mx-auto bg-black/40 border border-white/5 p-4 rounded-3xl min-h-[800px] shadow-2xl relative overflow-hidden">
+    <div className="max-w-2xl mx-auto bg-black/40 border border-white/10 p-6 rounded-3xl min-h-[800px] shadow-2xl relative overflow-hidden space-y-8">
       {/* Header */}
-      <div className="mb-6 border-b border-white/10 pb-4">
-        <h2 className="text-lg font-bold text-white mb-2">Interface Logistique Partenaire</h2>
-        <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 px-3 py-1.5 rounded-full w-max">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-          <span className="text-xs font-semibold text-green-400">API MedLogistics En Ligne</span>
+      <div className="border-b border-white/10 pb-5">
+        <h2 className="text-xl font-bold text-white mb-2">Interface Logistique Coursier</h2>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span className="text-xs font-semibold text-emerald-400">MedLogistics Two-Way Connecté</span>
+          </div>
+          <div className="text-xs text-slate-400">
+            {phase1Orders.length} ramassage(s) • {phase2Orders.length} livraison(s)
+          </div>
         </div>
       </div>
 
-      <div className="space-y-6">
-        {/* A Collecter */}
-        <div>
-          <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-            <Package className="w-4 h-4"/> À Collecter ({toPickup.length})
+      {/* ════ SECTION A: PHASE 1 - RAMASSAGES AU CABINET ════ */}
+      <div className="bg-black/30 border border-amber-500/30 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <h3 className="text-base font-bold text-amber-300 flex items-center gap-2">
+            <Package className="w-5 h-5 text-amber-400" />
+            Phase 1 : Ramassages au Cabinet
           </h3>
-          <div className="space-y-4">
-            {toPickup.map(o => (
-              <div key={o.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="font-mono text-sm font-bold text-white text-opacity-80">REF: {o.patient_ref}</span>
-                  <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Prioritaire</span>
-                </div>
-                
-                {/* Route */}
-                <div className="relative pl-6 mb-5 space-y-4">
-                  <div className="absolute left-[11px] top-2 bottom-2 w-0.5 border-l-2 border-dashed border-white/20"></div>
-                  <div className="relative">
-                    <div className="absolute -left-6 top-0.5 text-base">📍</div>
-                    <div className="text-sm font-medium text-white">Point A: Laboratoire</div>
-                    <div className="text-xs text-slate-400">Départ - Prêt pour enlèvement</div>
-                  </div>
-                  <div className="relative">
-                    <div className="absolute -left-6 top-0.5 text-base">🏥</div>
-                    <div className="text-sm font-medium text-white">Point B: {o.dentist_name}</div>
-                    <div className="text-xs text-slate-400">Destination - Cabinet Dentaire</div>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => patchOrder(o.id, { status: "EN_ROUTE" })} 
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-3 flex justify-center items-center gap-2 font-semibold transition-colors shadow-lg"
-                >
-                  📷 Scanner QR d'Enlèvement
-                </button>
-              </div>
-            ))}
-            {toPickup.length === 0 && <div className="text-sm text-center text-slate-500 py-4">Aucun colis à collecter.</div>}
-          </div>
+          <span className="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-semibold">
+            {phase1Orders.length}
+          </span>
         </div>
 
-        {/* En Cours de Livraison */}
-        <div>
-          <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-            <Truck className="w-4 h-4"/> En Cours de Livraison ({inTransit.length})
-          </h3>
-          <div className="space-y-4">
-            {inTransit.map(o => (
-              <div key={o.id} className="bg-white/5 border border-emerald-500/20 rounded-2xl p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="font-mono text-sm font-bold text-white text-opacity-80">REF: {o.patient_ref}</span>
-                  <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase animate-pulse">En Transit</span>
+        <div className="space-y-4">
+          {phase1Orders.map(o => (
+            <div key={o.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+              <div className="flex justify-between items-center mb-3">
+                <span className="font-mono text-sm font-bold text-white">REF: {o.patient_ref}</span>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded font-bold uppercase ${
+                  o.status === "ATTENTE_RAMASSAGE"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    : "bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse"
+                }`}>
+                  {o.status === "ATTENTE_RAMASSAGE" ? "📦 En Attente de Ramassage" : "🚚 En Route vers Labo"}
+                </span>
+              </div>
+
+              {/* Two-Way Routing: Cabinet -> Labo */}
+              <div className="relative pl-6 mb-4 space-y-3">
+                <div className="absolute left-[11px] top-2 bottom-2 w-0.5 border-l-2 border-dashed border-amber-500/30"></div>
+                <div className="relative">
+                  <div className="absolute -left-6 top-0.5 text-base">🏥</div>
+                  <div className="text-sm font-medium text-amber-300">Point A: {o.dentist_name}</div>
+                  <div className="text-xs text-slate-400">Cabinet de départ — Empreinte Physique</div>
                 </div>
-                
-                {/* Route */}
-                <div className="relative pl-6 mb-5 space-y-4">
+                <div className="relative">
+                  <div className="absolute -left-6 top-0.5 text-base">📍</div>
+                  <div className="text-sm font-medium text-white">Point B: Laboratoire CFAO</div>
+                  <div className="text-xs text-slate-400">Destination — Réception & Modèle</div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div>
+                {o.status === "ATTENTE_RAMASSAGE" && (
+                  <button
+                    onClick={() => patchOrder(o.id, { status: "EN_ROUTE_LABO" })}
+                    className="w-full bg-amber-600 hover:bg-amber-500 text-white rounded-xl py-3 flex justify-center items-center gap-2 font-semibold text-xs transition-colors shadow-lg"
+                  >
+                    📦 Scanner & Récupérer
+                  </button>
+                )}
+                {o.status === "EN_ROUTE_LABO" && (
+                  <button
+                    onClick={() => patchOrder(o.id, { status: "A_CONFIRMER" })}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 flex justify-center items-center gap-2 font-semibold text-xs transition-colors shadow-lg"
+                  >
+                    🏭 Déposer au Labo
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {phase1Orders.length === 0 && (
+            <div className="text-sm text-center text-slate-500 py-4">
+              Aucun ramassage en attente.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ════ SECTION B: PHASE 2 - LIVRAISONS AU CABINET ════ */}
+      <div className="bg-black/30 border border-emerald-500/30 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <h3 className="text-base font-bold text-emerald-300 flex items-center gap-2">
+            <Truck className="w-5 h-5 text-emerald-400" />
+            Phase 2 : Livraisons au Cabinet
+          </h3>
+          <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full font-semibold">
+            {phase2Orders.length}
+          </span>
+        </div>
+
+        <div className="space-y-4">
+          {phase2Orders.map(o => (
+            <div key={o.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+              <div className="flex justify-between items-center mb-3">
+                <span className="font-mono text-sm font-bold text-white">REF: {o.patient_ref}</span>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded font-bold uppercase ${
+                  o.status === "EN_ROUTE_CABINET"
+                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse"
+                    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                }`}>
+                  {o.status === "EN_ROUTE_CABINET" ? "🚚 En Route vers Cabinet" : "📦 Prêt pour Expédition"}
+                </span>
+              </div>
+
+                {/* Routing: Labo -> Cabinet */}
+                <div className="relative pl-6 mb-4 space-y-3">
                   <div className="absolute left-[11px] top-2 bottom-2 w-0.5 border-l-2 border-dashed border-emerald-500/30"></div>
-                  <div className="relative opacity-50">
+                  <div className="relative">
                     <div className="absolute -left-6 top-0.5 text-base">📍</div>
-                    <div className="text-sm font-medium text-white line-through">Point A: Laboratoire</div>
+                    <div className="text-sm font-medium text-white">Point A: Laboratoire CFAO</div>
+                    <div className="text-xs text-slate-400">Départ — Prothèse terminée</div>
                   </div>
                   <div className="relative">
                     <div className="absolute -left-6 top-0.5 text-base">🏥</div>
                     <div className="text-sm font-medium text-emerald-400">Point B: {o.dentist_name}</div>
-                    <div className="text-xs text-slate-400">Approche imminente</div>
+                    <div className="text-xs text-slate-400">Destination — Cabinet Dentaire</div>
                   </div>
                 </div>
 
-                {verifyingId === o.id ? (
-                  <div className="bg-black/50 border border-white/10 p-3 rounded-xl flex gap-2">
-                    <input 
-                      type="text" 
-                      placeholder="Code PIN (Ex: 1234)" 
-                      value={pin}
-                      onChange={e => setPin(e.target.value)}
-                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                      autoFocus
-                    />
-                    <button 
-                      onClick={() => handleConfirmDelivery(o.id)}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+                {/* Action Buttons */}
+                <div>
+                  {o.status === "PRET_EXPEDITION" && (
+                    <button
+                      onClick={() => patchOrder(o.id, { status: "EN_ROUTE_CABINET" })}
+                      className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-3 flex justify-center items-center gap-2 font-semibold text-xs transition-colors shadow-lg"
                     >
-                      Confirmer
+                      📷 Scanner & Récupérer
                     </button>
-                    <button 
-                      onClick={() => { setVerifyingId(null); setPin(""); }}
-                      className="bg-white/10 hover:bg-white/20 text-slate-300 font-semibold px-3 py-2 rounded-lg text-sm transition-colors"
-                    >
-                      X
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => setVerifyingId(o.id)} 
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-3 flex justify-center items-center gap-2 font-semibold transition-colors shadow-[0_0_15px_rgba(5,150,105,0.3)]"
-                  >
-                    ✅ Valider la Livraison
-                  </button>
-                )}
+                  )}
+                  {o.status === "EN_ROUTE_CABINET" && (
+                    verifyingId === o.id ? (
+                      <div className="bg-black/50 border border-white/10 p-3 rounded-xl flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Code PIN (Ex: 1234)"
+                          value={pin}
+                          onChange={e => setPin(e.target.value)}
+                          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleConfirmDelivery(o.id)}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          onClick={() => { setVerifyingId(null); setPin(""); }}
+                          className="bg-white/10 hover:bg-white/20 text-slate-300 font-semibold px-3 py-2 rounded-lg text-sm transition-colors"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setVerifyingId(o.id)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-3 flex justify-center items-center gap-2 font-semibold text-xs transition-colors shadow-[0_0_15px_rgba(5,150,105,0.3)]"
+                      >
+                        ✅ Valider PIN & Livrer
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
-            ))}
-            {inTransit.length === 0 && <div className="text-sm text-center text-slate-500 py-4">Aucune livraison en cours.</div>}
-          </div>
+            )
+          )}
+          {phase2Orders.length === 0 && (
+            <div className="text-sm text-center text-slate-500 py-4">
+              Aucune livraison en attente.
+            </div>
+          )}
         </div>
       </div>
     </div>
