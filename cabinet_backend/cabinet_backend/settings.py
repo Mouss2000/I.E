@@ -1,7 +1,4 @@
-"""
-Django settings for cabinet_backend — Cabinet 2.0 MVP.
-SQLite for portability. CORS wide-open for local dev.
-"""
+"""Django settings for cabinet_backend — Cabinet 2.0 MVP."""
 
 from pathlib import Path
 
@@ -22,24 +19,37 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
-# ---------- INSTALLED APPS ----------
-INSTALLED_APPS = [
+# ---------- TENANT APPS ----------
+SHARED_APPS = [
+    "django_tenants",
+    "customers",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party
     "rest_framework",
     "corsheaders",
-    # Local
+]
+
+TENANT_APPS = [
     "api",
 ]
 
+INSTALLED_APPS = list(SHARED_APPS) + [
+    app for app in TENANT_APPS if app not in SHARED_APPS
+]
+
+TENANT_MODEL = "customers.Client"
+TENANT_DOMAIN_MODEL = "customers.Domain"
+PUBLIC_SCHEMA_NAME = "public"
+DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
+
 # ---------- MIDDLEWARE ----------
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",          # MUST be first
+    "django_tenants.middleware.main.TenantMainMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -82,11 +92,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "cabinet_backend.wsgi.application"
 
-# ---------- DATABASE (SQLite — zero config) ----------
+# ---------- DATABASE (PostgreSQL with schema-based tenants) ----------
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": RUNTIME_BASE / "db.sqlite3",
+        "ENGINE": "django_tenants.postgresql_backend",
+        "NAME": os.environ.get("POSTGRES_DB", "cabinet"),
+        "USER": os.environ.get("POSTGRES_USER", "postgres"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+        "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
 

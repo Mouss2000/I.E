@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import api from "./api/client";
+import { useTenant } from "./contexts/useTenant";
 import { 
   User, Activity, FileText, CheckCircle, Package, Truck, 
   ShieldCheck, Clock, Zap, LogOut, ChevronRight, Check,
@@ -7,19 +9,15 @@ import {
 import shadeGuideImg from "./assets/shade-guide.png";
 import logoImg from "./assets/logo.png";
 
-const API_URL = "http://127.0.0.1:8000/api/prescriptions/";
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
+  const { tenant, clearTenant } = useTenant();
   
   const fetchOrders = async () => {
     try {
-      const res = await fetch(API_URL);
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
-      }
+      const res = await api.get("prescriptions/");
+      setOrders(res.data);
     } catch (e) {
       console.error("API Error", e);
     }
@@ -46,12 +44,18 @@ export default function App() {
           <div className="text-xs text-violet-400 mt-1 uppercase tracking-wider font-semibold">
             {user.role}
           </div>
+          <div className="text-xs text-sky-300 mt-3">
+            Espace Labo : {tenant?.name || tenant?.id}
+          </div>
         </div>
         
         <div className="flex-1"></div>
         
         <button 
-          onClick={() => setUser(null)}
+          onClick={() => {
+            setUser(null);
+            clearTenant();
+          }}
           className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors p-2"
         >
           <LogOut className="w-5 h-5" />
@@ -83,10 +87,19 @@ export default function App() {
 function LoginScreen({ setUser }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("Cabinet Dentaire");
+  const [tenantId, setTenantId] = useState(
+    localStorage.getItem("tenant_id") || "labo1",
+  );
+  const { setTenant } = useTenant();
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (name.trim()) setUser({ name, role });
+    if (name.trim() && tenantId.trim()) {
+      const id = tenantId.trim().toLowerCase();
+      const tenantName = id === "labo1" ? "Labo 1" : id;
+      setTenant(id, tenantName);
+      setUser({ name, role });
+    }
   };
 
   return (
@@ -110,7 +123,22 @@ function LoginScreen({ setUser }) {
               />
             </div>
           </div>
-          
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Identifiant du laboratoire
+            </label>
+            <input
+              type="text"
+              required
+              pattern="[a-z0-9][a-z0-9-]*"
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-violet-500 outline-none"
+              placeholder="labo1"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Rôle</label>
             <select 
@@ -234,15 +262,11 @@ function DentistForm({ user, onSuccess }) {
     };
 
     try {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) onSuccess();
-      else alert("Erreur lors de la soumission");
+      await api.post("prescriptions/", payload);
+      onSuccess();
     } catch (e) {
       console.error(e);
+      alert("Erreur lors de la soumission");
     }
     setLoading(false);
   };
@@ -570,11 +594,7 @@ function LabPortal({ orders, refresh }) {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const patchOrder = async (id, payload) => {
-    await fetch(`${API_URL}${id}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    await api.patch(`prescriptions/${id}/`, payload);
     refresh();
   };
 
@@ -884,11 +904,7 @@ function BillingPipeline({ orders, patchOrder }) {
 
   const bulkPatch = async (ids, payload) => {
     for (const id of ids) {
-      await fetch(`${API_URL}${id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      await api.patch(`prescriptions/${id}/`, payload);
     }
     patchOrder(ids[0], {});
   };
@@ -1077,11 +1093,7 @@ function CourierPortal({ orders, refresh }) {
   const [pin, setPin] = useState("");
 
   const patchOrder = async (id, payload) => {
-    await fetch(`${API_URL}${id}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    await api.patch(`prescriptions/${id}/`, payload);
     refresh();
   };
 

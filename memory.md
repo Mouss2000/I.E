@@ -169,3 +169,12 @@ Compress-Archive -Path "dist/Cabinet2/*" -DestinationPath "dist/Cabinet2_App.zip
 | `cabinet_backend/cabinet_backend/settings.py` | RUNTIME_BASE portable DB config |
 | `cabinet_frontend/src/App.jsx` | Monolithique React (Login + 3 portails) |
 | `cabinet_frontend/vite.config.js` | `base: '/static/'` pour Django serving |
+
+## Tenant SaaS Upgrade Traceability (2026-10-22)
+
+- Backend migrated from SQLite configuration to PostgreSQL with `django_tenants`; database connection values are read from `POSTGRES_*` environment variables.
+- Added the `customers` app with `Client` and `Domain` tenant models and its initial migration. Configured shared/tenant apps, schema router, tenant models, and `TenantMainMiddleware`.
+- Frontend added Axios tenant-aware routing using `tenant_id` from local storage and hostname routing (`{tenant}.localhost`), plus a tenant context/provider and lab label.
+- Added the `caveman` workspace skill under `.github/skills/caveman/`.
+- Validation: frontend `npm run build` passed; `npm run lint` passed with pre-existing warnings in `src/App.jsx`. Python syntax and `git diff --check` passed. Django/PostgreSQL runtime checks were not run.
+- Database credentials must be configured via environment variables and must not be committed.
