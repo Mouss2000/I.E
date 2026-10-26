@@ -1,4 +1,49 @@
 # Project Memory & Progress Log
+
+## Réorganisation overview / gestion des commandes (2026-10-26)
+
+- Barre latérale du laboratoire : Menu principal, Commandes, Facturation, Configuration. L’ancien onglet Interface client est retiré.
+- Menu principal informatif : Dashboard avec indicateurs issus des données et panneau d’alertes compact à droite sous les indicateurs ; Commandes avec grandes cartes (ID, client, dates, tâche, progression, problèmes, motif de pause) ; Facturation avec montants et aperçu en lecture seule.
+- Gestion Commandes : deux onglets Commandes / Étapes de commandes. Deux colonnes reçues / acceptées. Acceptation persistée, clic sur une carte acceptée ouvrant son diagramme.
+- Diagramme par commande : fiche déplaçable vers la prochaine étape autorisée, blocs numérotés, étapes adaptées à la méthode ; bouton de validation disponible également. Les contrôles de réception / qualité et les étapes du coursier restent appliqués.
+- Pause persistante avec motif obligatoire, problèmes actuels ; avancement bloqué pendant une pause. Date d’acceptation et date de réception effective enregistrées par le serveur.
+- Départ des nouvelles demandes : DEMANDE_RECUE, acceptation, puis ANALYSE_DEMANDE. Migrations 0011 / 0012 : nouvelles données et reprise des commandes déjà en cours comme acceptées.
+- Facturation opérationnelle déplacée dans sa propre rubrique latérale ; vue générale conservée dans le menu principal.
+- Validation : 12 tests Django passent. Test navigateur vérifiant aperçu sans actions, acceptation, colonnes, diagramme, deux glisser-déposer, motif/problèmes persistants et facturation séparée. Données QA supprimées.
+
+## Parcours de production par méthode (2026-10-26)
+
+- Nouveau composant `ProductionWorkflow.jsx` dans Interface client, remplaçant le pipeline CNC unique. Vues par phase, recherche, fiche par commande, étapes détaillées, notes et historique horodaté.
+- Départ des nouvelles commandes : analyse de la demande ; empreintes physiques passent ensuite par ramassage / coursier, les numériques passent directement à la réception. Réception → contrôle du dossier → planification.
+- Choix à la planification : CFAO / usinage CNC, impression 3D ou fabrication conventionnelle ; date de livraison requise.
+- CFAO : CAO → préparation FAO → usinage → traitement thermique uniquement si sélectionné (frittage, cristallisation ou cuisson) → finition.
+- Impression 3D : CAO → préparation plateau/supports → impression → lavage/séchage → post-polymérisation → finition.
+- Conventionnel : modèle de travail → modelage → fabrication conventionnelle → finition.
+- Fin commune : contrôle qualité validé → conditionnement → prêt à expédier → coursier → livré. Aucun paramètre de temps/température n'est imposé par l'application.
+- API : statuts, méthode, traitement, notes, validations et historique persistants. Les transitions non séquentielles sont rejetées côté serveur ; la méthode est verrouillée après lancement technique. Métadonnées du parcours renvoyées par le backend.
+- Migrations 0009 / 0010 : les anciennes commandes conservent leur statut et leur route CFAO. Correction de la génération du PIN pour les nouvelles commandes à clé UUID.
+- Validation : 10 tests Django passent, build Vite réussi, trois parcours validés de bout en bout dans le navigateur jusqu'à l'expédition ; données de test supprimées. Lint : seul avertissement préexistant de l'effet de chargement dans App.jsx.
+- Référence de structuration du post-traitement 3D : https://dental.formlabs.com/post-processing/ ; les protocoles concrets restent ceux du matériau et de l'équipement choisis par le labo.
+
+## Configuration du laboratoire (2026-10-26)
+
+- Alertes : API `alerts/` calculée dans le schéma du labo ; stock au seuil ou en dessous, stock périmé, maintenance à J−7 ou dépassée, contrats et qualifications à J−7 ou dépassés. Dates optionnelles `contract_end_date` et `qualification_expiry_date` ajoutées au personnel (migration 0008).
+- Petite notification rouge cliquable vers la section Alertes du dashboard ; chaque alerte ouvre directement sa fiche d’origine en modification dans Configuration.
+- Actualisation toutes les 30 secondes, au retour dans la fenêtre et après modification des ressources. Les alertes se résolvent automatiquement lorsque leur cause est corrigée.
+- Validation des alertes : 7 tests Django passent ; parcours navigateur popup → dashboard → fiche → correction vérifié pour stock, maintenance, contrat et qualifications. Données de test supprimées après vérification.
+
+- Navigation réorganisée : boutons Menu principal et Configuration dans la barre latérale du labo. Menu principal regroupe Dashboard, Interface client (pipeline CFAO existant) et Facturation.
+- Informations utilisateur / rôle / laboratoire et déconnexion déplacées dans Mon compte, en haut à droite pour tous les portails. Fermeture au clic extérieur, changement de focus ou Échap ; déconnexion efface le tenant et réinitialise la navigation.
+- Vérification navigateur de la navigation et du menu compte réussie ; build Vite réussi.
+
+- Nouvel onglet Configuration dans le portail Laboratoire : Personnel, Matériel et Stock.
+- Personnel : matricule, nom, rôle, qualifications, coordonnées, suivi administratif du compte, disponibilité, horaires et date de disponibilité.
+- Matériel : ID, nom, disponibilité, capacité et unité, tâches, date de disponibilité et maintenance.
+- Stock : référence, article, quantité, unité, seuil d'alerte, lot, réception et péremption ; alertes de stock bas et de péremption.
+- CRUD persistant via les API `staff/`, `equipment/`, `stock/`, dans le schéma du laboratoire ; migration `0007`.
+- Le suivi des comptes ne crée pas d'authentification : l'écran de connexion reste une démonstration, sans application des permissions du personnel.
+- Validation : 5 tests Django passent ; parcours navigateur des trois sections vérifiés (création, modification, rechargement, suppression) ; build Vite réussi. Le lint conserve uniquement les avertissements préexistants dans App.jsx.
+- Environnement local : `.venv`, PostgreSQL séparé dans `C:/Users/Moham/cabinet-ie-local-postgres` (127.0.0.1:5433, utilisateur cabinet_dev, base cabinet), tenant `labo1.localhost`. Backend : définir POSTGRES_USER=cabinet_dev et POSTGRES_PORT=5433 avant `manage.py runserver 127.0.0.1:8000`. Frontend : `npm run dev -- --host 127.0.0.1 --port 5173`, URL `/static/`.
 *Soutenance Projet Innov - Cabinet 2.0*
 
 ## Architecture Générale

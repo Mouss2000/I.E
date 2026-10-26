@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import api from "./api/client";
+import LabConfiguration from "./LabConfiguration";
+import { LabOverview, OrderManagement } from "./LabWorkspace";
+import { AlertPopup } from './LabAlerts';
+import { useLabAlerts } from './useLabAlerts';
 import { useTenant } from "./contexts/useTenant";
 import { 
-  User, Activity, FileText, CheckCircle, Package, Truck, 
-  ShieldCheck, Clock, Zap, LogOut, ChevronRight, Check,
-  Upload, Download
+  User, FileText, Package, Truck,
+  ShieldCheck, Clock, Zap, LogOut,
+  Upload, Download, Settings, LayoutDashboard, ChevronDown
 } from "lucide-react";
 import shadeGuideImg from "./assets/shade-guide.png";
 import logoImg from "./assets/logo.png";
@@ -12,7 +16,12 @@ import logoImg from "./assets/logo.png";
 export default function App() {
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [labSection, setLabSection] = useState('main');
+  const [labTab, setLabTab] = useState('dashboard');
+  const [alertFocus, setAlertFocus] = useState(0);
+  const [configTarget, setConfigTarget] = useState(null);
   const { tenant, clearTenant } = useTenant();
+  const alertState = useLabAlerts(user?.role === 'Laboratoire' ? tenant?.id : null);
   
   const fetchOrders = async () => {
     try {
@@ -32,57 +41,96 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#0d0914] text-white font-sans overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-white/5 border-r border-white/10 p-6 flex flex-col">
+      <div className="w-64 shrink-0 bg-white/5 border-r border-white/10 p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-10">
           <img src={logoImg} alt="Cabinet 2.0 Logo" className="h-10 w-10 drop-shadow-[0_0_15px_rgba(14,165,233,0.6)] object-contain" />
           <h1 className="text-xl font-bold text-white tracking-wide">Cabinet 2.0</h1>
         </div>
         
-        <div className="bg-black/40 rounded-xl p-4 border border-white/10 mb-8">
-          <div className="text-sm text-gray-400 mb-1">Connecté en tant que</div>
-          <div className="font-semibold text-lg">{user.name}</div>
-          <div className="text-xs text-violet-400 mt-1 uppercase tracking-wider font-semibold">
-            {user.role}
-          </div>
-          <div className="text-xs text-sky-300 mt-3">
-            Espace Labo : {tenant?.name || tenant?.id}
-          </div>
-        </div>
-        
-        <div className="flex-1"></div>
-        
-        <button 
-          onClick={() => {
-            setUser(null);
-            clearTenant();
-          }}
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors p-2"
-        >
-          <LogOut className="w-5 h-5" />
-          Déconnexion
-        </button>
+        {user.role === 'Laboratoire' && <nav aria-label="Navigation du laboratoire" className="space-y-2">
+          {[
+            ['main', 'Menu principal', LayoutDashboard],
+            ['orders', 'Commandes', Package],
+            ['billing', 'Facturation', FileText],
+            ['configuration', 'Configuration', Settings],
+          ].map(([key, label, Icon]) => <button key={key} onClick={() => { if (key === 'configuration') setConfigTarget(null); setLabSection(key); }} aria-current={labSection === key ? 'page' : undefined} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${labSection === key ? 'border border-sky-400/20 bg-sky-500/15 text-sky-300' : 'border border-transparent text-slate-400 hover:bg-white/5 hover:text-white'}`}><Icon className="h-5 w-5" />{label}</button>)}
+        </nav>}
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        <header className="h-16 border-b border-white/10 bg-white/5 flex items-center px-8 backdrop-blur-md sticky top-0 z-10">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <header className="h-16 border-b border-white/10 bg-white/5 flex items-center justify-between gap-4 px-8 backdrop-blur-md sticky top-0 z-20">
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             Système synchronisé
           </div>
+          <AccountMenu user={user} tenant={tenant} onLogout={() => {
+            setUser(null);
+            setOrders([]);
+            setLabSection('main');
+            setLabTab('dashboard');
+            setConfigTarget(null);
+            clearTenant();
+          }} />
         </header>
         
         <main className="p-8 max-w-7xl mx-auto">
           {user.role === "Cabinet Dentaire" && <DentistPortal user={user} orders={orders} refresh={fetchOrders} />}
-          {user.role === "Laboratoire" && <LabPortal orders={orders} refresh={fetchOrders} />}
+          {user.role === "Laboratoire" && <LabPortal section={labSection} activeTab={labTab} setActiveTab={setLabTab} configTarget={configTarget} alertState={alertState} alertFocus={alertFocus} onAlertSelect={alert => {
+            setConfigTarget({ section: alert.section, id: alert.resource_id, request: Date.now() });
+            setLabSection('configuration');
+          }} orders={orders} refresh={fetchOrders} />}
           {user.role === "Coursier" && <CourierPortal orders={orders} refresh={fetchOrders} />}
         </main>
+        {user.role === 'Laboratoire' && <AlertPopup alerts={alertState.alerts} onOpen={() => {
+          setLabSection('main'); setLabTab('dashboard'); setAlertFocus(value => value + 1);
+        }} />}
       </div>
     </div>
   );
 }
 
 // ---------------- VIEWS ----------------
+
+function AccountMenu({ user, tenant, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const container = useRef(null);
+  const trigger = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismissOutside = event => {
+      if (!container.current?.contains(event.target)) setOpen(false);
+    };
+    const dismissEscape = event => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('focusin', dismissOutside);
+    document.addEventListener('keydown', dismissEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('focusin', dismissOutside);
+      document.removeEventListener('keydown', dismissEscape);
+    };
+  }, [open]);
+
+  return <div ref={container} className="relative">
+    <button ref={trigger} onClick={() => setOpen(value => !value)} aria-expanded={open} aria-controls="account-panel" aria-label="Mon compte" className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-sky-400">
+      <User className="h-4 w-4 text-sky-300" /><span>Mon compte</span><ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+    {open && <section id="account-panel" aria-label="Informations du compte" className="absolute right-0 top-full mt-3 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/15 bg-[#171321] shadow-2xl">
+      <div className="space-y-4 p-5">
+        <div><p className="text-xs text-slate-400">Connecté en tant que</p><p className="mt-1 break-words font-semibold text-white">{user.name}</p><p className="mt-1 text-xs font-medium uppercase tracking-wide text-violet-300">{user.role}</p></div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-xs text-slate-400">Laboratoire</p><p className="mt-1 break-words text-sm font-medium text-sky-300">{tenant?.name || tenant?.id}</p><p className="mt-1 break-words text-xs text-slate-400">Identifiant : {tenant?.id}</p></div>
+      </div>
+      <div className="border-t border-white/10 p-2"><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-xl px-3 py-3 text-sm text-red-300 transition-colors hover:bg-red-500/10"><LogOut className="h-4 w-4" />Déconnexion</button></div>
+    </section>}
+  </div>;
+}
 
 function LoginScreen({ setUser }) {
   const [name, setName] = useState("");
@@ -576,7 +624,7 @@ function DentistList({ orders }) {
           </div>
           <div className="text-right">
             <div className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border ${statusColors[o.status] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
-              {statusLabels[o.status] || o.status}
+              {o.status_label || statusLabels[o.status] || o.status}
             </div>
             {o.delivery_date && <div className="text-xs text-gray-400 mt-2 flex items-center justify-end gap-1"><Clock className="w-3 h-3"/> Prévu: {o.delivery_date}</div>}
           </div>
@@ -590,283 +638,16 @@ function DentistList({ orders }) {
 //  LAB PORTAL
 // ════════════════════════════════════════
 
-function LabPortal({ orders, refresh }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
-
+function LabPortal({ section, orders, refresh, activeTab, setActiveTab, configTarget, alertState, alertFocus, onAlertSelect }) {
   const patchOrder = async (id, payload) => {
     await api.patch(`prescriptions/${id}/`, payload);
-    refresh();
+    await refresh();
   };
-
-  return (
-    <div className="space-y-6">
-      {/* Tab Navigation */}
-      <div className="flex gap-4 border-b border-white/10 pb-0">
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'dashboard' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab('commandes')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'commandes' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
-        >
-          Interface Technicien CFAO
-        </button>
-        <button
-          onClick={() => setActiveTab('facturation')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'facturation' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
-        >
-          Facturation
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      <div className="pt-2">
-        {activeTab === 'dashboard' && (
-          <div className="space-y-8">
-            <div className="grid grid-cols-3 gap-6">
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <div className="text-gray-400 text-sm mb-1">Fiches incomplètes bloquées</div>
-                <div className="text-2xl font-bold text-emerald-400">74.5%</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <div className="text-gray-400 text-sm mb-1">Infections bloquées (Verrou)</div>
-                <div className="text-2xl font-bold text-emerald-400">83.0%</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <div className="text-gray-400 text-sm mb-1">Appels inutiles éliminés</div>
-                <div className="text-2xl font-bold text-violet-400">93.6%</div>
-              </div>
-            </div>
-            
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Activité Récente</h3>
-              <div className="space-y-3">
-                <div className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Connexion sécurisée établie (Dr. Dupont)</span>
-                  <span className="text-xs text-slate-500">Il y a 2 min</span>
-                </div>
-                <div className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Mise à jour du catalogue des matériaux</span>
-                  <span className="text-xs text-slate-500">Il y a 1 heure</span>
-                </div>
-                <div className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Synchronisation logistique réussie</span>
-                  <span className="text-xs text-slate-500">Il y a 3 heures</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════ COMMANDES TAB → INTERFACE TECHNICIEN CFAO ════ */}
-        {activeTab === 'commandes' && (
-          <CfaoPipeline orders={orders} patchOrder={patchOrder} />
-        )}
-
-        {/* ════ FACTURATION TAB → FLUX FINANCIER MAROCAIN ════ */}
-        {activeTab === 'facturation' && (
-          <BillingPipeline orders={orders} patchOrder={patchOrder} />
-        )}
-      </div>
-    </div>
-  );
+  if (section === 'configuration') return <LabConfiguration key={configTarget?.request || 'configuration'} target={configTarget} />;
+  if (section === 'orders') return <OrderManagement orders={orders} patchOrder={patchOrder} />;
+  if (section === 'billing') return <div className="space-y-6"><div><p className="text-xs uppercase tracking-widest text-sky-400">Gestion</p><h1 className="mt-2 text-2xl font-semibold">Facturation</h1></div><BillingPipeline orders={orders} patchOrder={patchOrder} /></div>;
+  return <LabOverview orders={orders} tab={activeTab} setTab={setActiveTab} alertState={alertState} alertFocus={alertFocus} onAlertSelect={onAlertSelect} />;
 }
-
-// ── CFAO Production Pipeline ──
-
-const CFAO_CHAIN = [
-  "A_CONFIRMER",
-  "SALLE_CAO",
-  "USINAGE_CNC",
-  "FRITTAGE_9H",
-  "CONTROLE_QUALITE",
-  "PRET_EXPEDITION"
-];
-
-const CFAO_STAGES = [
-  { key: "A_CONFIRMER",      label: "1. Réception & Modèle",       badge: null,                                     nextStatus: "SALLE_CAO",        nextLabel: "Envoyer en Conception ➔",       needsDate: true },
-  { key: "SALLE_CAO",        label: "2. Salle Conception (CAO)",   badge: "Génération .STL + .constructionInfo",     nextStatus: "USINAGE_CNC",      nextLabel: "Envoyer vers CNC ➔",            needsDate: false },
-  { key: "USINAGE_CNC",      label: "3. Calcul CNC & Usinage",    badge: "Fraisage 5-Axes",                         nextStatus: "FRITTAGE_9H",      nextLabel: "Lancer Frittage (9h) ➔",        needsDate: false },
-  { key: "FRITTAGE_9H",      label: "4. Four de Frittage (9h)",    badge: "🔥 Cuisson 1500°C + Refroidissement",     nextStatus: "CONTROLE_QUALITE", nextLabel: "Passer au Contrôle ➔",          needsDate: false },
-  { key: "CONTROLE_QUALITE", label: "5. Phase de Contrôle",        badge: "Vérification & Glaçage",                  nextStatus: "PRET_EXPEDITION",  nextLabel: "Valider & Appeler Coursier ➔",  needsDate: false },
-];
-
-const stageBorderColors = {
-  A_CONFIRMER:      "border-gray-500/30",
-  SALLE_CAO:        "border-blue-500/30",
-  USINAGE_CNC:      "border-indigo-500/30",
-  FRITTAGE_9H:      "border-orange-500/30",
-  CONTROLE_QUALITE: "border-cyan-500/30",
-};
-
-const stageAccentColors = {
-  A_CONFIRMER:      "text-gray-400",
-  SALLE_CAO:        "text-blue-400",
-  USINAGE_CNC:      "text-indigo-400",
-  FRITTAGE_9H:      "text-orange-400",
-  CONTROLE_QUALITE: "text-cyan-400",
-};
-
-function CfaoPipeline({ orders, patchOrder }) {
-  const [draggedOrder, setDraggedOrder] = useState(null);
-
-  const nextValidStage = draggedOrder
-    ? CFAO_CHAIN[CFAO_CHAIN.indexOf(draggedOrder.status) + 1]
-    : null;
-
-  const handleDrop = (e, targetStageKey) => {
-    e.preventDefault();
-    if (!draggedOrder) return;
-    const currentIndex = CFAO_CHAIN.indexOf(draggedOrder.status);
-    const targetIndex = CFAO_CHAIN.indexOf(targetStageKey);
-
-    // ONLY advance if target row is strictly the next step in the chain
-    if (targetIndex === currentIndex + 1) {
-      patchOrder(draggedOrder.id, { status: targetStageKey });
-    }
-    setDraggedOrder(null);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  };
-
-  return (
-    <div className="space-y-6">
-      {CFAO_STAGES.map(stage => {
-        const stageOrders = orders.filter(o => o.status === stage.key);
-        const isNextTarget = stage.key === nextValidStage;
-
-        return (
-          <div
-            key={stage.key}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, stage.key)}
-            className={`border rounded-2xl p-5 transition-all duration-200 ${
-              isNextTarget
-                ? "ring-2 ring-emerald-500/50 bg-emerald-900/10 border-emerald-500/40"
-                : `bg-black/20 ${stageBorderColors[stage.key]}`
-            }`}
-          >
-            <h3 className={`font-semibold mb-4 flex items-center justify-between ${stageAccentColors[stage.key]}`}>
-              <span className="flex items-center gap-2">
-                {stage.label}
-                {isNextTarget && (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
-                    Zone de Dépôt Valide
-                  </span>
-                )}
-              </span>
-              <span className="bg-white/10 text-white px-2.5 py-0.5 rounded-full text-xs">{stageOrders.length}</span>
-            </h3>
-            {stageOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande à cette étape. Glissez une commande ici.</div>}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {stageOrders.map(o => (
-                <CfaoCard
-                  key={o.id}
-                  order={o}
-                  stage={stage}
-                  patchOrder={patchOrder}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", o.id);
-                    setDraggedOrder(o);
-                  }}
-                  onDragEnd={() => setDraggedOrder(null)}
-                  isDragging={draggedOrder?.id === o.id}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function CfaoCard({ order, stage, patchOrder, onDragStart, onDragEnd, isDragging }) {
-  const [date, setDate] = useState(order.delivery_date || "");
-
-  const handleAdvance = () => {
-    const payload = { status: stage.nextStatus };
-    if (stage.needsDate && date) {
-      payload.delivery_date = date;
-    }
-    patchOrder(order.id, payload);
-  };
-
-  return (
-    <div
-      draggable={true}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className={`bg-white/5 border border-white/10 p-4 rounded-xl shadow-lg relative overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
-        isDragging ? "opacity-30 scale-95 border-emerald-500/50" : "opacity-100 hover:border-white/20"
-      }`}
-    >
-      {order.is_fast_track && (
-        <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none">
-          <div className="absolute transform rotate-45 bg-amber-500 text-black text-[10px] font-bold py-1 right-[-35px] top-[10px] w-[100px] text-center">URGENCE</div>
-        </div>
-      )}
-      <div className="flex items-center justify-between">
-        <div className="font-bold text-lg">{order.patient_ref}</div>
-        <span className="text-[10px] text-slate-500 font-mono">⠿ Glisser</span>
-      </div>
-      <div className="text-sm text-gray-400 mb-2">{order.dentist_name}</div>
-
-      {/* Order details */}
-      <div className="text-xs text-gray-300 grid grid-cols-2 gap-2 mb-3 bg-black/30 p-2 rounded">
-        <div>Dent: {order.tooth_number}</div>
-        <div>Teinte: {order.shade}</div>
-        <div>Mat: {order.material}</div>
-        <div>{order.total_price} MAD</div>
-      </div>
-
-      {/* Impression badge */}
-      <div className={`text-xs mb-3 px-2 py-1 rounded inline-flex items-center gap-1 ${
-        order.impression_type === "NUMERIQUE"
-          ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
-          : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
-      }`}>
-        {order.impression_type === "NUMERIQUE" ? `💻 Fichier .STL${order.stl_file_name ? ` — ${order.stl_file_name}` : ""}` : "📦 Empreinte Physique"}
-      </div>
-
-      {/* Stage badge */}
-      {stage.badge && (
-        <div className="text-xs bg-white/5 border border-white/10 text-slate-300 px-2 py-1 rounded mb-3">
-          {stage.badge}
-        </div>
-      )}
-
-      {/* Date picker for A_CONFIRMER */}
-      {stage.needsDate && (
-        <div className="mb-3">
-          <label className="block text-xs text-gray-500 mb-1">Date de livraison estimée</label>
-          <input
-            type="date"
-            className="w-full bg-black/50 border border-white/10 rounded text-xs p-2 text-white"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-          />
-        </div>
-      )}
-
-      {/* Advance button */}
-      <button
-        onClick={handleAdvance}
-        className="w-full mt-1 bg-white/10 hover:bg-white/20 border border-white/20 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 font-medium"
-      >
-        <ChevronRight className="w-4 h-4" /> {stage.nextLabel}
-      </button>
-    </div>
-  );
-}
-
-// ── Moroccan Billing Pipeline with Drag & Drop ──
 
 const FINANCE_CHAIN = ["COMMANDE", "SITUATION", "FACTURE"];
 
@@ -1094,7 +875,7 @@ function CourierPortal({ orders, refresh }) {
 
   const patchOrder = async (id, payload) => {
     await api.patch(`prescriptions/${id}/`, payload);
-    refresh();
+    await refresh();
   };
 
   const handleConfirmDelivery = (id) => {

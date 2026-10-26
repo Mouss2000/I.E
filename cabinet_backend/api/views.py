@@ -1,6 +1,29 @@
 from rest_framework import viewsets
-from .models import Prescription
-from .serializers import PrescriptionSerializer
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .alerts import laboratory_alerts
+from .models import Prescription, StaffMember, Equipment, StockItem
+from .serializers import PrescriptionSerializer, StaffMemberSerializer, EquipmentSerializer, StockItemSerializer
+
+
+@api_view(['GET'])
+def alerts_view(request):
+    return Response(laboratory_alerts())
+
+
+class StaffMemberViewSet(viewsets.ModelViewSet):
+    queryset = StaffMember.objects.all()
+    serializer_class = StaffMemberSerializer
+
+
+class EquipmentViewSet(viewsets.ModelViewSet):
+    queryset = Equipment.objects.all()
+    serializer_class = EquipmentSerializer
+
+
+class StockItemViewSet(viewsets.ModelViewSet):
+    queryset = StockItem.objects.all()
+    serializer_class = StockItemSerializer
 
 
 class PrescriptionViewSet(viewsets.ModelViewSet):
@@ -16,14 +39,4 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     serializer_class = PrescriptionSerializer
 
     def perform_create(self, serializer):
-        impression_type = self.request.data.get("impression_type", "PHYSIQUE")
-        if impression_type == "NUMERIQUE":
-            serializer.save(
-                impression_type=impression_type,
-                status=Prescription.Status.A_CONFIRMER,
-            )
-        else:
-            serializer.save(
-                impression_type="PHYSIQUE",
-                status=Prescription.Status.ATTENTE_RAMASSAGE,
-            )
+        serializer.save()
