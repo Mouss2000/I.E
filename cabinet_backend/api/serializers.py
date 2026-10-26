@@ -65,7 +65,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prescription
         fields = "__all__"
-        read_only_fields = ["id", "created_at", "updated_at", "delivery_pin", "workflow_history", "accepted_at", "received_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "delivery_pin", "workflow_history", "accepted_at", "received_at", "dentist_account"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

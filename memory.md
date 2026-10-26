@@ -1,5 +1,17 @@
 # Project Memory & Progress Log
 
+## Administration, comptes et routage dentiste multi-labo (2026-10-26)
+
+- Connexion principale par nom de compte enregistré, sans choix de rôle ni mot de passe (démonstration). Redirection automatique selon le rôle et le labo affecté ; noms normalisés pour ignorer casse, espaces et tirets.
+- Comptes de démonstration : Admin ; Dentiste 1 / 2 / 3 ; Labo 1 - Mohamed / Labo 2 - Mohamed / Labo 3 - Mohamed. Création idempotente via `manage.py bootstrap_demo`, après les migrations. Prépare aussi le tenant public et les domaines localhost / 127.0.0.1.
+- Nouvelle plateforme partagée dans `customers` : comptes, rôles, affectations, logs et signalements. API `/platform/`, exécutée dans le schéma public ; accès admin contrôlé côté serveur par session de démonstration signée.
+- Admin : aperçu de tous les labos / clients, création de labos avec schéma PostgreSQL et domaine, création / modification / désactivation des comptes, affectation labo, journal des 200 événements récents, suivi des incidents techniques.
+- Réinitialisation des mots de passe : génération d'un mot de passe temporaire affiché une fois, stockage haché, anciennes sessions plateforme expirées ; l'authentification par mot de passe reste désactivée comme demandé.
+- Dentiste : sélecteur du laboratoire sur chaque prescription. Commande enregistrée dans le schéma destinataire ; liste personnelle consolidée sur tous les labos, avec nom du labo. Le compte dentiste est lié à la commande (migration api 0013).
+- Sessions de démonstration et tenant en sessionStorage pour séparer les onglets. Avec un jeton LAB, les API du labo vérifient l'affectation. L'accès historique sans jeton reste disponible pour le prototype livreur, conformément à la demande de le conserver.
+- Bouton Assistance pour les dentistes et laboratoires, signalements visibles dans l'administration. Le composant CourierPortal est inchangé ; accès depuis le lien Accès livreur de la nouvelle connexion.
+- Migrations customers 0002 / api 0013 appliquées aux trois labos. Validation : 17 tests Django passent ; navigateur vérifie création labo / compte, affectation, reset, assistance, logs, redirections 1/2/3, envoi dentiste vers labo2 et confidentialité entre dentistes/labos. Données QA supprimées après vérification.
+
 ## Réorganisation overview / gestion des commandes (2026-10-26)
 
 - Barre latérale du laboratoire : Menu principal, Commandes, Facturation, Configuration. L’ancien onglet Interface client est retiré.

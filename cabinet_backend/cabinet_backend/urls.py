@@ -4,6 +4,7 @@ from django.views.generic import TemplateView
 
 
 urlpatterns = [
+    path('platform/', include('customers.urls')),
     path("admin/", admin.site.urls),
     path("api/", include("api.urls")),
     # Root serves the frontend SPA

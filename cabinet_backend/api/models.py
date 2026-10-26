@@ -108,6 +108,7 @@ class Prescription(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient_ref = models.CharField(max_length=50, help_text="Anonymised patient reference (e.g. PAT-4829)")
     dentist_name = models.CharField(max_length=100, help_text="Name of the dentist who created the order")
+    dentist_account = models.ForeignKey('customers.PlatformAccount', null=True, blank=True, on_delete=models.PROTECT)
     tooth_number = models.IntegerField()
     shade = models.CharField(max_length=10)
     material = models.CharField(max_length=50)

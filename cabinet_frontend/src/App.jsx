@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import api from "./api/client";
+import platform from "./api/platform";
+import DemoLogin from "./DemoLogin";
+import AdminPortal from "./AdminPortal";
+import SupportButton from "./SupportButton";
 import LabConfiguration from "./LabConfiguration";
 import { LabOverview, OrderManagement } from "./LabWorkspace";
 import { AlertPopup } from './LabAlerts';
@@ -14,7 +18,9 @@ import shadeGuideImg from "./assets/shade-guide.png";
 import logoImg from "./assets/logo.png";
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('demo_user') || 'null'); } catch { return null; }
+  });
   const [orders, setOrders] = useState([]);
   const [labSection, setLabSection] = useState('main');
   const [labTab, setLabTab] = useState('dashboard');
@@ -23,20 +29,21 @@ export default function App() {
   const { tenant, clearTenant } = useTenant();
   const alertState = useLabAlerts(user?.role === 'Laboratoire' ? tenant?.id : null);
   
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
-      const res = await api.get("prescriptions/");
+      if (user?.role === 'Administrateur') return;
+      const res = user?.role === 'Cabinet Dentaire' ? await platform.get('dentist/orders/') : await api.get("prescriptions/");
       setOrders(res.data);
     } catch (e) {
       console.error("API Error", e);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchOrders();
-  }, [user]);
+  }, [user, fetchOrders]);
 
-  if (!user) return <LoginScreen setUser={setUser} />;
+  if (!user) return <DemoLogin setUser={setUser} courierLogin={<LoginScreen setUser={setUser} />} />;
 
   return (
     <div className="flex h-screen bg-[#0d0914] text-white font-sans overflow-hidden">
@@ -55,6 +62,7 @@ export default function App() {
             ['configuration', 'Configuration', Settings],
           ].map(([key, label, Icon]) => <button key={key} onClick={() => { if (key === 'configuration') setConfigTarget(null); setLabSection(key); }} aria-current={labSection === key ? 'page' : undefined} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${labSection === key ? 'border border-sky-400/20 bg-sky-500/15 text-sky-300' : 'border border-transparent text-slate-400 hover:bg-white/5 hover:text-white'}`}><Icon className="h-5 w-5" />{label}</button>)}
         </nav>}
+        {user.role === 'Administrateur' && <nav aria-label="Navigation administration"><div className="flex items-center gap-3 rounded-xl border border-sky-400/20 bg-sky-500/15 px-4 py-3 text-sm font-medium text-sky-300"><LayoutDashboard className="h-5 w-5" />Administration</div></nav>}
       </div>
 
       {/* Main Content */}
@@ -64,7 +72,13 @@ export default function App() {
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             Système synchronisé
           </div>
+          <div className="flex items-center gap-3">
+          {['Laboratoire', 'Cabinet Dentaire'].includes(user.role) && <SupportButton />}
           <AccountMenu user={user} tenant={tenant} onLogout={() => {
+            const token = sessionStorage.getItem('demo_token');
+            if (token) platform.post('logout/', {}, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+            sessionStorage.removeItem('demo_token');
+            sessionStorage.removeItem('demo_user');
             setUser(null);
             setOrders([]);
             setLabSection('main');
@@ -72,9 +86,11 @@ export default function App() {
             setConfigTarget(null);
             clearTenant();
           }} />
+          </div>
         </header>
         
         <main className="p-8 max-w-7xl mx-auto">
+          {user.role === "Administrateur" && <AdminPortal />}
           {user.role === "Cabinet Dentaire" && <DentistPortal user={user} orders={orders} refresh={fetchOrders} />}
           {user.role === "Laboratoire" && <LabPortal section={labSection} activeTab={labTab} setActiveTab={setLabTab} configTarget={configTarget} alertState={alertState} alertFocus={alertFocus} onAlertSelect={alert => {
             setConfigTarget({ section: alert.section, id: alert.resource_id, request: Date.now() });
@@ -125,7 +141,7 @@ function AccountMenu({ user, tenant, onLogout }) {
     {open && <section id="account-panel" aria-label="Informations du compte" className="absolute right-0 top-full mt-3 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/15 bg-[#171321] shadow-2xl">
       <div className="space-y-4 p-5">
         <div><p className="text-xs text-slate-400">Connecté en tant que</p><p className="mt-1 break-words font-semibold text-white">{user.name}</p><p className="mt-1 text-xs font-medium uppercase tracking-wide text-violet-300">{user.role}</p></div>
-        <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-xs text-slate-400">Laboratoire</p><p className="mt-1 break-words text-sm font-medium text-sky-300">{tenant?.name || tenant?.id}</p><p className="mt-1 break-words text-xs text-slate-400">Identifiant : {tenant?.id}</p></div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-xs text-slate-400">Espace</p><p className="mt-1 break-words text-sm font-medium text-sky-300">{user.role === 'Administrateur' ? 'Administration du projet' : user.role === 'Cabinet Dentaire' ? 'Dentiste — choix du labo par commande' : tenant?.name || tenant?.id}</p>{tenant?.id && <p className="mt-1 break-words text-xs text-slate-400">Identifiant : {tenant.id}</p>}</div>
       </div>
       <div className="border-t border-white/10 p-2"><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-xl px-3 py-3 text-sm text-red-300 transition-colors hover:bg-red-500/10"><LogOut className="h-4 w-4" />Déconnexion</button></div>
     </section>}
@@ -133,89 +149,23 @@ function AccountMenu({ user, tenant, onLogout }) {
 }
 
 function LoginScreen({ setUser }) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("Cabinet Dentaire");
-  const [tenantId, setTenantId] = useState(
-    localStorage.getItem("tenant_id") || "labo1",
-  );
+  const [name, setName] = useState('');
+  const [tenantId, setTenantId] = useState('labo1');
   const { setTenant } = useTenant();
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (name.trim() && tenantId.trim()) {
-      const id = tenantId.trim().toLowerCase();
-      const tenantName = id === "labo1" ? "Labo 1" : id;
-      setTenant(id, tenantName);
-      setUser({ name, role });
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-[#0d0914] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl">
-        <img src={logoImg} alt="Cabinet 2.0 Logo" className="h-24 w-auto mx-auto mb-6 drop-shadow-[0_0_25px_rgba(14,165,233,0.5)] object-contain" />
-        <h2 className="text-2xl font-bold text-center text-white mb-8">Connexion à votre espace</h2>
-        
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Votre Nom</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input 
-                type="text" 
-                required
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none transition-all"
-                placeholder="Dr. Dupont / Labo / Livreur"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Identifiant du laboratoire
-            </label>
-            <input
-              type="text"
-              required
-              pattern="[a-z0-9][a-z0-9-]*"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-violet-500 outline-none"
-              placeholder="labo1"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Rôle</label>
-            <select 
-              value={role}
-              onChange={e => setRole(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-violet-500 outline-none appearance-none"
-            >
-              <option>Cabinet Dentaire</option>
-              <option>Laboratoire</option>
-              <option>Coursier</option>
-            </select>
-          </div>
-
-          <button 
-            type="submit"
-            className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3 rounded-xl transition-colors shadow-[0_0_20px_rgba(124,58,237,0.3)] mt-4"
-          >
-            Accéder au portail
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen bg-[#0d0914] flex items-center justify-center p-4 text-white">
+    <form onSubmit={event => { event.preventDefault(); setTenant(tenantId, tenantId); setUser({ name, role: 'Coursier' }); }} className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 space-y-5">
+      <h1 className="text-2xl font-semibold">Accès livreur</h1>
+      <label className="block text-sm text-slate-300">Votre nom<input aria-label="Nom du livreur" required value={name} onChange={event => setName(event.target.value)} className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 p-3" /></label>
+      <label className="block text-sm text-slate-300">Identifiant du laboratoire<input aria-label="Laboratoire du livreur" required pattern="[a-z0-9][a-z0-9-]*" value={tenantId} onChange={event => setTenantId(event.target.value)} className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 p-3" /></label>
+      <button className="w-full rounded-xl bg-violet-600 p-3">Accéder au portail livreur</button>
+    </form>
+  </div>;
 }
 
 function DentistPortal({ user, orders, refresh }) {
   const [tab, setTab] = useState("new");
   
-  const myOrders = orders.filter(o => o.dentist_name === user.name);
+  const myOrders = orders;
 
   return (
     <div className="space-y-6">
@@ -274,6 +224,14 @@ const ToothSvg = ({ isTop, isActive, className }) => (
 );
 
 function DentistForm({ user, onSuccess }) {
+  const [laboratories, setLaboratories] = useState([]);
+  const [laboratoryId, setLaboratoryId] = useState('');
+  const [labError, setLabError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    platform.get('laboratories/').then(({ data }) => { if (!cancelled) setLaboratories(data); }).catch(() => { if (!cancelled) setLabError('Impossible de charger les laboratoires. Rechargez la page.'); });
+    return () => { cancelled = true; };
+  }, []);
   const [formData, setFormData] = useState({
     patient_ref: "", tooth_number: "", shade: "A1", material: "Zircone",
     is_fast_track: false, disinfected: false,
@@ -310,7 +268,7 @@ function DentistForm({ user, onSuccess }) {
     };
 
     try {
-      await api.post("prescriptions/", payload);
+      await platform.post("dentist/orders/", { ...payload, laboratory_id: laboratoryId });
       onSuccess();
     } catch (e) {
       console.error(e);
@@ -326,6 +284,7 @@ function DentistForm({ user, onSuccess }) {
           <FileText className="text-violet-400" /> Prescrire
         </h2>
         <form id="dentistForm" onSubmit={handleSubmit} className="grid grid-cols-2 gap-6">
+          <div><label htmlFor="dentist-laboratory" className="mb-1 block text-sm text-gray-400">Laboratoire destinataire *</label><select id="dentist-laboratory" required value={laboratoryId} onChange={event => setLaboratoryId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#171321] p-3 text-white"><option value="">Choisir un laboratoire</option>{laboratories.map(lab => <option key={lab.identifier} value={lab.identifier}>{lab.name}</option>)}</select>{labError && <p role="alert" className="mt-1 text-xs text-red-300">{labError}</p>}</div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Réf. Patient (Anonyme)</label>
             <input type="text" required className="w-full bg-black/40 border border-white/10 rounded-lg p-3" 
@@ -621,6 +580,7 @@ function DentistList({ orders }) {
               {o.impression_type === "NUMERIQUE" && <span className="bg-violet-500/20 text-violet-300 px-2 py-1 rounded text-xs font-medium">💻 .STL</span>}
             </div>
             <div className="text-sm text-gray-400">{o.material} - Teinte {o.shade}</div>
+            {o.laboratory_name && <p className="mt-1 text-xs text-sky-300">Laboratoire : {o.laboratory_name}</p>}
           </div>
           <div className="text-right">
             <div className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border ${statusColors[o.status] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>

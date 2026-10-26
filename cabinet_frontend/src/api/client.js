@@ -4,7 +4,9 @@ const api = axios.create();
 const tenantIdPattern = /^[a-z0-9][a-z0-9-]*$/;
 
 api.interceptors.request.use((config) => {
-  const tenantId = localStorage.getItem("tenant_id");
+  const token = sessionStorage.getItem('demo_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const tenantId = sessionStorage.getItem("tenant_id");
   if (!tenantId || !tenantIdPattern.test(tenantId)) {
     throw new Error("A valid tenant_id is required before making API requests.");
   }

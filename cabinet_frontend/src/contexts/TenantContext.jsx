@@ -3,12 +3,12 @@ import { TenantContext } from "./tenantContext";
 const tenantIdPattern = /^[a-z0-9][a-z0-9-]*$/;
 
 function getStoredTenant() {
-  const id = localStorage.getItem("tenant_id");
+  const id = sessionStorage.getItem("tenant_id");
   if (!id) return null;
 
   return {
     id,
-    name: localStorage.getItem("tenant_name") || id,
+    name: sessionStorage.getItem("tenant_name") || id,
   };
 }
 
@@ -20,14 +20,14 @@ export function TenantProvider({ children }) {
       throw new Error("Tenant ID must use lowercase letters, numbers, or hyphens.");
     }
 
-    localStorage.setItem("tenant_id", id);
-    localStorage.setItem("tenant_name", name);
+    sessionStorage.setItem("tenant_id", id);
+    sessionStorage.setItem("tenant_name", name);
     setTenantState({ id, name });
   };
 
   const clearTenant = () => {
-    localStorage.removeItem("tenant_id");
-    localStorage.removeItem("tenant_name");
+    sessionStorage.removeItem("tenant_id");
+    sessionStorage.removeItem("tenant_name");
     setTenantState(null);
   };
 
