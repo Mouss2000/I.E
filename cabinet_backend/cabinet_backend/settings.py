@@ -5,6 +5,11 @@ from pathlib import Path
 import sys
 import os
 
+try:
+    from .local_settings import POSTGRES_PASSWORD as _local_postgres_password
+except ImportError:
+    _local_postgres_password = ""
+
 if getattr(sys, 'frozen', False):
     # PyInstaller creates a temp folder and stores path in _MEIPASS
     BASE_DIR = Path(sys._MEIPASS)
@@ -98,7 +103,7 @@ DATABASES = {
         "ENGINE": "django_tenants.postgresql_backend",
         "NAME": os.environ.get("POSTGRES_DB", "cabinet"),
         "USER": os.environ.get("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", _local_postgres_password),
         "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }

@@ -1,8 +1,97 @@
 import random
 import uuid
+from django.conf import settings
 from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal
+
+
+class EmployeeProfile(models.Model):
+    class Role(models.TextChoices):
+        RECEPTION = 'RECEPTION', 'Reception'
+        CAO = 'CAO', 'CAO'
+        FAO = 'FAO', 'FAO'
+        QUALITE = 'QUALITE', 'Quality'
+        COURSIER = 'COURSIER', 'Courier'
+
+    class ContractType(models.TextChoices):
+        CDI = 'CDI', 'CDI'
+        CDD = 'CDD', 'CDD'
+        STAGE = 'STAGE', 'Internship'
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='employee_profile',
+    )
+    role = models.CharField(max_length=10, choices=Role.choices)
+    contract_type = models.CharField(max_length=5, choices=ContractType.choices)
+    hire_date = models.DateField()
+    is_available = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['pk']
+
+
+class Machine(models.Model):
+    class MachineType(models.TextChoices):
+        SCANNER = 'SCANNER', 'Scanner'
+        USINEUSE_CNC = 'USINEUSE_CNC', 'CNC milling machine'
+        FOUR_FRITTAGE = 'FOUR_FRITTAGE', 'Sintering furnace'
+
+    class Status(models.TextChoices):
+        ACTIF = 'ACTIF', 'Active'
+        MAINTENANCE = 'MAINTENANCE', 'Maintenance'
+        PANNE = 'PANNE', 'Out of order'
+
+    name = models.CharField(max_length=120)
+    machine_type = models.CharField(max_length=13, choices=MachineType.choices)
+    capacity = models.IntegerField(validators=[MinValueValidator(1)])
+    status = models.CharField(max_length=11, choices=Status.choices, default=Status.ACTIF)
+
+    class Meta:
+        ordering = ['name', 'pk']
+        constraints = [
+            models.CheckConstraint(condition=models.Q(capacity__gte=1), name='machine_positive_capacity'),
+        ]
+
+
+class Inventory(models.Model):
+    class Unit(models.TextChoices):
+        DISQUE = 'DISQUE', 'Disc'
+        GRAMMES = 'GRAMMES', 'Grams'
+        UNITES = 'UNITES', 'Units'
+
+    material_name = models.CharField(max_length=120)
+    quantity = models.FloatField(validators=[MinValueValidator(0)])
+    unit = models.CharField(max_length=7, choices=Unit.choices)
+    alert_threshold = models.FloatField(validators=[MinValueValidator(0)])
+
+    class Meta:
+        ordering = ['material_name', 'pk']
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gte=0), name='inventory_nonnegative_quantity'),
+            models.CheckConstraint(condition=models.Q(alert_threshold__gte=0), name='inventory_nonnegative_threshold'),
+        ]
+
+    @property
+    def is_low_stock(self):
+        return self.quantity <= self.alert_threshold
+
+
+class PartnerClinic(models.Model):
+    name = models.CharField(max_length=120)
+    pickup_address = models.TextField()
+    contact_phone = models.CharField(max_length=30)
+    linked_dentist = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='partner_clinics',
+    )
+
+    class Meta:
+        ordering = ['name', 'pk']
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(pickup_address=''), name='clinic_required_pickup_address'),
+        ]
 
 
 class StaffMember(models.Model):

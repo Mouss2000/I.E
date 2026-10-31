@@ -1,8 +1,52 @@
 from rest_framework import serializers
-from .models import Prescription, StaffMember, Equipment, StockItem
+from .models import (
+    Prescription, StaffMember, Equipment, StockItem,
+    EmployeeProfile, Machine, Inventory, PartnerClinic,
+)
+import math
 from .workflow import workflow_steps, next_status, LABELS
 from django.utils import timezone
 from copy import copy
+
+
+class EmployeeProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeProfile
+        fields = ['id', 'user', 'role', 'contract_type', 'hire_date', 'is_available']
+        read_only_fields = ['id']
+
+
+class MachineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Machine
+        fields = ['id', 'name', 'machine_type', 'capacity', 'status']
+        read_only_fields = ['id']
+
+
+class InventorySerializer(serializers.ModelSerializer):
+    is_low_stock = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Inventory
+        fields = ['id', 'material_name', 'quantity', 'unit', 'alert_threshold', 'is_low_stock']
+        read_only_fields = ['id']
+
+    def validate_quantity(self, value):
+        if not math.isfinite(value):
+            raise serializers.ValidationError('Quantity must be finite.')
+        return value
+
+    def validate_alert_threshold(self, value):
+        if not math.isfinite(value):
+            raise serializers.ValidationError('Alert threshold must be finite.')
+        return value
+
+
+class PartnerClinicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PartnerClinic
+        fields = ['id', 'name', 'pickup_address', 'contact_phone', 'linked_dentist']
+        read_only_fields = ['id']
 
 
 class StaffMemberSerializer(serializers.ModelSerializer):

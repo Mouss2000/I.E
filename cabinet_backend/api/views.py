@@ -1,10 +1,37 @@
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
-from .permissions import DemoTenantPermission
+from .permissions import DemoTenantPermission, LaboratoryResourcePermission
 from rest_framework.response import Response
 from .alerts import laboratory_alerts
-from .models import Prescription, StaffMember, Equipment, StockItem
-from .serializers import PrescriptionSerializer, StaffMemberSerializer, EquipmentSerializer, StockItemSerializer
+from .models import Prescription, StaffMember, Equipment, StockItem, EmployeeProfile, Machine, Inventory, PartnerClinic
+from .serializers import (
+    PrescriptionSerializer, StaffMemberSerializer, EquipmentSerializer, StockItemSerializer,
+    EmployeeProfileSerializer, MachineSerializer, InventorySerializer, PartnerClinicSerializer,
+)
+
+
+class EmployeeProfileViewSet(viewsets.ModelViewSet):
+    permission_classes = [LaboratoryResourcePermission]
+    queryset = EmployeeProfile.objects.all()
+    serializer_class = EmployeeProfileSerializer
+
+
+class MachineViewSet(viewsets.ModelViewSet):
+    permission_classes = [LaboratoryResourcePermission]
+    queryset = Machine.objects.all()
+    serializer_class = MachineSerializer
+
+
+class InventoryViewSet(viewsets.ModelViewSet):
+    permission_classes = [LaboratoryResourcePermission]
+    queryset = Inventory.objects.all()
+    serializer_class = InventorySerializer
+
+
+class PartnerClinicViewSet(viewsets.ModelViewSet):
+    permission_classes = [LaboratoryResourcePermission]
+    queryset = PartnerClinic.objects.all()
+    serializer_class = PartnerClinicSerializer
 
 
 @api_view(['GET'])

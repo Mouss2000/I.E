@@ -33,6 +33,43 @@ class PlatformTests(TenantTestCase):
         self.assertTrue(AccessLog.objects.filter(event='LOGIN', success=False).exists())
         self.assertTrue(AccessLog.objects.filter(event='LOGOUT', account=self.worker).exists())
 
+    def test_portal_login_accepts_short_name_in_selected_laboratory(self):
+        response = self.client.post('/platform/login/', {
+            'name': '  Mohamed  ', 'role': 'LAB', 'laboratory': self.tenant.schema_name,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['account']['id'], self.worker.pk)
+        self.assertEqual(response.data['account']['laboratory_id'], self.tenant.schema_name)
+        self.worker.is_active = False
+        self.worker.save()
+        response = self.client.post('/platform/login/', {
+            'name': 'Mohamed', 'role': 'LAB', 'laboratory': self.tenant.schema_name,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_portal_login_enforces_role_and_laboratory(self):
+        invalid = [
+            {'name': 'Mohamed', 'role': 'LAB'},
+            {'name': self.worker.name, 'role': 'LAB', 'laboratory': 'unknown'},
+            {'name': self.worker.name, 'role': 'DENTIST'},
+            {'name': 'Admin', 'role': 'DENTIST'},
+            {'name': 'Admin', 'role': 'INVALID'},
+            {'name': '', 'role': 'LAB', 'laboratory': self.tenant.schema_name},
+        ]
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                self.assertEqual(self.client.post('/platform/login/', payload, format='json').status_code, 400)
+        response = self.client.post('/platform/login/', {'name': 'Dentiste 1', 'role': 'DENTIST'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['account']['id'], self.dentist.pk)
+
+    def test_portal_login_rejects_ambiguous_short_names(self):
+        PlatformAccount.objects.create(name='Mohamed', login_key='mohamed', role='LAB', laboratory=self.tenant)
+        response = self.client.post('/platform/login/', {
+            'name': 'Mohamed', 'role': 'LAB', 'laboratory': self.tenant.schema_name,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
     def test_admin_permissions_account_assignment_and_deactivation(self):
         self.assertIn(self.client.get('/platform/accounts/').status_code, [401, 403])
         self.login('Dentiste 1')

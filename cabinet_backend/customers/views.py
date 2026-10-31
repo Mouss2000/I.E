@@ -86,7 +86,32 @@ class LabSerializer(serializers.Serializer):
 def demo_login(request):
     name = str(request.data.get('name', '')).strip()[:150]
     key = login_key(name)
-    account = PlatformAccount.objects.select_related('laboratory').filter(login_key=key, is_active=True).first()
+    role = request.data.get('role')
+    if role is not None and role not in {'ADMIN', 'DENTIST', 'LAB'}:
+        return Response({'detail': 'Sélectionnez un espace valide.'}, status=400)
+    candidates = PlatformAccount.objects.select_related('laboratory').filter(is_active=True)
+    if role:
+        candidates = candidates.filter(role=role)
+    if role == 'LAB':
+        laboratory = str(request.data.get('laboratory', ''))
+        if not laboratory:
+            return Response({'detail': 'Sélectionnez votre laboratoire.'}, status=400)
+        candidates = candidates.filter(laboratory__schema_name=laboratory).exclude(laboratory__schema_name='public')
+        matches = []
+        for candidate in candidates:
+            aliases = {candidate.login_key, login_key(candidate.name)}
+            parts = re.split(r'\s+[-–—]\s+', candidate.name, maxsplit=1)
+            if len(parts) == 2:
+                aliases.add(login_key(parts[1]))
+            for prefix in [candidate.laboratory.name, candidate.laboratory.schema_name]:
+                prefix_key = login_key(prefix)
+                if prefix_key and login_key(candidate.name).startswith(prefix_key):
+                    aliases.add(login_key(candidate.name)[len(prefix_key):])
+            if key and key in aliases:
+                matches.append(candidate)
+        account = matches[0] if len(matches) == 1 else None
+    else:
+        account = candidates.filter(login_key=key).first() if key else None
     if not account:
         AccessLog.objects.create(name=name, event='LOGIN', success=False, details='Compte inconnu ou désactivé')
         return Response({'detail': 'Nom inconnu ou compte désactivé. Contactez l’administrateur.'}, status=400)
