@@ -1,78 +1,126 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import api from "./api/client";
+import platform from "./api/platform";
+import DemoLogin from "./DemoLogin";
+import AdminPortal from "./AdminPortal";
+import SupportButton from "./SupportButton";
+import LabBusinessConfiguration from "./LabBusinessConfiguration";
+import LabAdminLayout from "./LabAdminLayout";
+import { LabOverview, OrderManagement } from "./LabWorkspace";
+import { AlertPopup } from './LabAlerts';
+import { useLabAlerts } from './useLabAlerts';
+import { useTenant } from "./contexts/useTenant";
 import { 
-  User, Activity, FileText, CheckCircle, Package, Truck, 
-  ShieldCheck, Clock, Zap, LogOut, ChevronRight, Check,
-  Upload, Download
+  User, FileText, Package, Truck,
+  ShieldCheck, Clock, Zap, LogOut,
+  Upload, Download, Settings, LayoutDashboard, ChevronDown
 } from "lucide-react";
 import shadeGuideImg from "./assets/shade-guide.png";
 import logoImg from "./assets/logo.png";
 
-const API_URL = "http://127.0.0.1:8000/api/prescriptions/";
-
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('demo_user') || 'null'); } catch { return null; }
+  });
   const [orders, setOrders] = useState([]);
+  const [labSection, setLabSection] = useState('main');
+  const [labTab, setLabTab] = useState('dashboard');
+  const [alertFocus, setAlertFocus] = useState(0);
+  const [configTarget, setConfigTarget] = useState(null);
+  const { tenant, clearTenant } = useTenant();
+  const alertState = useLabAlerts(user?.role === 'Laboratoire' ? tenant?.id : null);
   
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch(API_URL);
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
-      }
+      if (user?.role === 'Administrateur') return;
+      const res = user?.role === 'Cabinet Dentaire' ? await platform.get('dentist/orders/') : await api.get("prescriptions/");
+      setOrders(res.data);
     } catch (e) {
       console.error("API Error", e);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchOrders();
-  }, [user]);
+  }, [user, fetchOrders]);
 
-  if (!user) return <LoginScreen setUser={setUser} />;
+  if (!user) return <DemoLogin setUser={setUser} courierLogin={<LoginScreen setUser={setUser} />} />;
+
+  if (user.role === 'Laboratoire') return <LabAdminLayout
+    section={labSection}
+    laboratoryName={tenant?.name || tenant?.id}
+    onNavigate={section => { if (section === 'configuration') setConfigTarget(null); setLabSection(section); }}
+    accountMenu={<><SupportButton /><AccountMenu user={user} tenant={tenant} onLogout={() => {
+      const token = sessionStorage.getItem('demo_token');
+      if (token) platform.post('logout/', {}, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      sessionStorage.removeItem('demo_token');
+      sessionStorage.removeItem('demo_user');
+      setUser(null); setOrders([]); setLabSection('main'); setLabTab('dashboard'); setConfigTarget(null); clearTenant();
+    }} /></>}
+  >
+    <LabPortal key={tenant?.id} section={labSection} activeTab={labTab} setActiveTab={setLabTab} configTarget={configTarget} alertState={alertState} alertFocus={alertFocus} onAlertSelect={alert => {
+      setConfigTarget({ section: alert.section, id: alert.resource_id, request: Date.now() });
+      setLabSection('configuration');
+    }} orders={orders} refresh={fetchOrders} />
+    <AlertPopup alerts={alertState.alerts} onOpen={() => { setLabSection('main'); setLabTab('dashboard'); setAlertFocus(value => value + 1); }} />
+  </LabAdminLayout>;
 
   return (
     <div className="flex h-screen bg-[#0d0914] text-white font-sans overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-white/5 border-r border-white/10 p-6 flex flex-col">
+      <div className="w-64 shrink-0 bg-white/5 border-r border-white/10 p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-10">
           <img src={logoImg} alt="Cabinet 2.0 Logo" className="h-10 w-10 drop-shadow-[0_0_15px_rgba(14,165,233,0.6)] object-contain" />
           <h1 className="text-xl font-bold text-white tracking-wide">Cabinet 2.0</h1>
         </div>
         
-        <div className="bg-black/40 rounded-xl p-4 border border-white/10 mb-8">
-          <div className="text-sm text-gray-400 mb-1">Connecté en tant que</div>
-          <div className="font-semibold text-lg">{user.name}</div>
-          <div className="text-xs text-violet-400 mt-1 uppercase tracking-wider font-semibold">
-            {user.role}
-          </div>
-        </div>
-        
-        <div className="flex-1"></div>
-        
-        <button 
-          onClick={() => setUser(null)}
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors p-2"
-        >
-          <LogOut className="w-5 h-5" />
-          Déconnexion
-        </button>
+        {user.role === 'Laboratoire' && <nav aria-label="Navigation du laboratoire" className="space-y-2">
+          {[
+            ['main', 'Menu principal', LayoutDashboard],
+            ['orders', 'Commandes', Package],
+            ['billing', 'Facturation', FileText],
+            ['configuration', 'Configuration', Settings],
+          ].map(([key, label, Icon]) => <button key={key} onClick={() => { if (key === 'configuration') setConfigTarget(null); setLabSection(key); }} aria-current={labSection === key ? 'page' : undefined} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${labSection === key ? 'border border-sky-400/20 bg-sky-500/15 text-sky-300' : 'border border-transparent text-slate-400 hover:bg-white/5 hover:text-white'}`}><Icon className="h-5 w-5" />{label}</button>)}
+        </nav>}
+        {user.role === 'Administrateur' && <nav aria-label="Navigation administration"><div className="flex items-center gap-3 rounded-xl border border-sky-400/20 bg-sky-500/15 px-4 py-3 text-sm font-medium text-sky-300"><LayoutDashboard className="h-5 w-5" />Administration</div></nav>}
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        <header className="h-16 border-b border-white/10 bg-white/5 flex items-center px-8 backdrop-blur-md sticky top-0 z-10">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <header className="h-16 border-b border-white/10 bg-white/5 flex items-center justify-between gap-4 px-8 backdrop-blur-md sticky top-0 z-20">
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             Système synchronisé
           </div>
+          <div className="flex items-center gap-3">
+          {['Laboratoire', 'Cabinet Dentaire'].includes(user.role) && <SupportButton />}
+          <AccountMenu user={user} tenant={tenant} onLogout={() => {
+            const token = sessionStorage.getItem('demo_token');
+            if (token) platform.post('logout/', {}, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+            sessionStorage.removeItem('demo_token');
+            sessionStorage.removeItem('demo_user');
+            setUser(null);
+            setOrders([]);
+            setLabSection('main');
+            setLabTab('dashboard');
+            setConfigTarget(null);
+            clearTenant();
+          }} />
+          </div>
         </header>
         
         <main className="p-8 max-w-7xl mx-auto">
+          {user.role === "Administrateur" && <AdminPortal />}
           {user.role === "Cabinet Dentaire" && <DentistPortal user={user} orders={orders} refresh={fetchOrders} />}
-          {user.role === "Laboratoire" && <LabPortal orders={orders} refresh={fetchOrders} />}
+          {user.role === "Laboratoire" && <LabPortal section={labSection} activeTab={labTab} setActiveTab={setLabTab} configTarget={configTarget} alertState={alertState} alertFocus={alertFocus} onAlertSelect={alert => {
+            setConfigTarget({ section: alert.section, id: alert.resource_id, request: Date.now() });
+            setLabSection('configuration');
+          }} orders={orders} refresh={fetchOrders} />}
           {user.role === "Coursier" && <CourierPortal orders={orders} refresh={fetchOrders} />}
         </main>
+        {user.role === 'Laboratoire' && <AlertPopup alerts={alertState.alerts} onOpen={() => {
+          setLabSection('main'); setLabTab('dashboard'); setAlertFocus(value => value + 1);
+        }} />}
       </div>
     </div>
   );
@@ -80,66 +128,64 @@ export default function App() {
 
 // ---------------- VIEWS ----------------
 
-function LoginScreen({ setUser }) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("Cabinet Dentaire");
+function AccountMenu({ user, tenant, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const container = useRef(null);
+  const trigger = useRef(null);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (name.trim()) setUser({ name, role });
-  };
+  useEffect(() => {
+    if (!open) return;
+    const dismissOutside = event => {
+      if (!container.current?.contains(event.target)) setOpen(false);
+    };
+    const dismissEscape = event => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('focusin', dismissOutside);
+    document.addEventListener('keydown', dismissEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('focusin', dismissOutside);
+      document.removeEventListener('keydown', dismissEscape);
+    };
+  }, [open]);
 
-  return (
-    <div className="min-h-screen bg-[#0d0914] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl">
-        <img src={logoImg} alt="Cabinet 2.0 Logo" className="h-24 w-auto mx-auto mb-6 drop-shadow-[0_0_25px_rgba(14,165,233,0.5)] object-contain" />
-        <h2 className="text-2xl font-bold text-center text-white mb-8">Connexion à votre espace</h2>
-        
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Votre Nom</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input 
-                type="text" 
-                required
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none transition-all"
-                placeholder="Dr. Dupont / Labo / Livreur"
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Rôle</label>
-            <select 
-              value={role}
-              onChange={e => setRole(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white focus:border-violet-500 outline-none appearance-none"
-            >
-              <option>Cabinet Dentaire</option>
-              <option>Laboratoire</option>
-              <option>Coursier</option>
-            </select>
-          </div>
-
-          <button 
-            type="submit"
-            className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3 rounded-xl transition-colors shadow-[0_0_20px_rgba(124,58,237,0.3)] mt-4"
-          >
-            Accéder au portail
-          </button>
-        </form>
+  return <div ref={container} className="relative">
+    <button ref={trigger} onClick={() => setOpen(value => !value)} aria-expanded={open} aria-controls="account-panel" aria-label="Mon compte" className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-sky-400">
+      <User className="h-4 w-4 text-sky-300" /><span>Mon compte</span><ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+    {open && <section id="account-panel" aria-label="Informations du compte" className="absolute right-0 top-full mt-3 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/15 bg-[#171321] shadow-2xl">
+      <div className="space-y-4 p-5">
+        <div><p className="text-xs text-slate-400">Connecté en tant que</p><p className="mt-1 break-words font-semibold text-white">{user.name}</p><p className="mt-1 text-xs font-medium uppercase tracking-wide text-violet-300">{user.role}</p></div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-xs text-slate-400">Espace</p><p className="mt-1 break-words text-sm font-medium text-sky-300">{user.role === 'Administrateur' ? 'Administration du projet' : user.role === 'Cabinet Dentaire' ? 'Dentiste — choix du labo par commande' : tenant?.name || tenant?.id}</p>{tenant?.id && <p className="mt-1 break-words text-xs text-slate-400">Identifiant : {tenant.id}</p>}</div>
       </div>
-    </div>
-  );
+      <div className="border-t border-white/10 p-2"><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-xl px-3 py-3 text-sm text-red-300 transition-colors hover:bg-red-500/10"><LogOut className="h-4 w-4" />Déconnexion</button></div>
+    </section>}
+  </div>;
+}
+
+function LoginScreen({ setUser }) {
+  const [name, setName] = useState('');
+  const [tenantId, setTenantId] = useState('labo1');
+  const { setTenant } = useTenant();
+  return <div className="min-h-screen bg-[#0d0914] flex items-center justify-center p-4 text-white">
+    <form onSubmit={event => { event.preventDefault(); setTenant(tenantId, tenantId); setUser({ name, role: 'Coursier' }); }} className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 space-y-5">
+      <h1 className="text-2xl font-semibold">Accès livreur</h1>
+      <label className="block text-sm text-slate-300">Votre nom<input aria-label="Nom du livreur" required value={name} onChange={event => setName(event.target.value)} className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 p-3" /></label>
+      <label className="block text-sm text-slate-300">Identifiant du laboratoire<input aria-label="Laboratoire du livreur" required pattern="[a-z0-9][a-z0-9-]*" value={tenantId} onChange={event => setTenantId(event.target.value)} className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 p-3" /></label>
+      <button className="w-full rounded-xl bg-violet-600 p-3">Accéder au portail livreur</button>
+    </form>
+  </div>;
 }
 
 function DentistPortal({ user, orders, refresh }) {
   const [tab, setTab] = useState("new");
   
-  const myOrders = orders.filter(o => o.dentist_name === user.name);
+  const myOrders = orders;
 
   return (
     <div className="space-y-6">
@@ -198,6 +244,14 @@ const ToothSvg = ({ isTop, isActive, className }) => (
 );
 
 function DentistForm({ user, onSuccess }) {
+  const [laboratories, setLaboratories] = useState([]);
+  const [laboratoryId, setLaboratoryId] = useState('');
+  const [labError, setLabError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    platform.get('laboratories/').then(({ data }) => { if (!cancelled) setLaboratories(data); }).catch(() => { if (!cancelled) setLabError('Impossible de charger les laboratoires. Rechargez la page.'); });
+    return () => { cancelled = true; };
+  }, []);
   const [formData, setFormData] = useState({
     patient_ref: "", tooth_number: "", shade: "A1", material: "Zircone",
     is_fast_track: false, disinfected: false,
@@ -234,15 +288,11 @@ function DentistForm({ user, onSuccess }) {
     };
 
     try {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) onSuccess();
-      else alert("Erreur lors de la soumission");
+      await platform.post("dentist/orders/", { ...payload, laboratory_id: laboratoryId });
+      onSuccess();
     } catch (e) {
       console.error(e);
+      alert("Erreur lors de la soumission");
     }
     setLoading(false);
   };
@@ -254,6 +304,7 @@ function DentistForm({ user, onSuccess }) {
           <FileText className="text-violet-400" /> Prescrire
         </h2>
         <form id="dentistForm" onSubmit={handleSubmit} className="grid grid-cols-2 gap-6">
+          <div><label htmlFor="dentist-laboratory" className="mb-1 block text-sm text-gray-400">Laboratoire destinataire *</label><select id="dentist-laboratory" required value={laboratoryId} onChange={event => setLaboratoryId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#171321] p-3 text-white"><option value="">Choisir un laboratoire</option>{laboratories.map(lab => <option key={lab.identifier} value={lab.identifier}>{lab.name}</option>)}</select>{labError && <p role="alert" className="mt-1 text-xs text-red-300">{labError}</p>}</div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Réf. Patient (Anonyme)</label>
             <input type="text" required className="w-full bg-black/40 border border-white/10 rounded-lg p-3" 
@@ -549,10 +600,11 @@ function DentistList({ orders }) {
               {o.impression_type === "NUMERIQUE" && <span className="bg-violet-500/20 text-violet-300 px-2 py-1 rounded text-xs font-medium">💻 .STL</span>}
             </div>
             <div className="text-sm text-gray-400">{o.material} - Teinte {o.shade}</div>
+            {o.laboratory_name && <p className="mt-1 text-xs text-sky-300">Laboratoire : {o.laboratory_name}</p>}
           </div>
           <div className="text-right">
             <div className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border ${statusColors[o.status] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
-              {statusLabels[o.status] || o.status}
+              {o.status_label || statusLabels[o.status] || o.status}
             </div>
             {o.delivery_date && <div className="text-xs text-gray-400 mt-2 flex items-center justify-end gap-1"><Clock className="w-3 h-3"/> Prévu: {o.delivery_date}</div>}
           </div>
@@ -566,287 +618,16 @@ function DentistList({ orders }) {
 //  LAB PORTAL
 // ════════════════════════════════════════
 
-function LabPortal({ orders, refresh }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
-
+function LabPortal({ section, orders, refresh, activeTab, setActiveTab, configTarget, alertState, alertFocus, onAlertSelect }) {
   const patchOrder = async (id, payload) => {
-    await fetch(`${API_URL}${id}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    refresh();
+    await api.patch(`prescriptions/${id}/`, payload);
+    await refresh();
   };
-
-  return (
-    <div className="space-y-6">
-      {/* Tab Navigation */}
-      <div className="flex gap-4 border-b border-white/10 pb-0">
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'dashboard' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab('commandes')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'commandes' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
-        >
-          Interface Technicien CFAO
-        </button>
-        <button
-          onClick={() => setActiveTab('facturation')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'facturation' ? 'text-sky-400 border-sky-500' : 'text-slate-400 border-transparent hover:text-white hover:border-white/20'}`}
-        >
-          Facturation
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      <div className="pt-2">
-        {activeTab === 'dashboard' && (
-          <div className="space-y-8">
-            <div className="grid grid-cols-3 gap-6">
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <div className="text-gray-400 text-sm mb-1">Fiches incomplètes bloquées</div>
-                <div className="text-2xl font-bold text-emerald-400">74.5%</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <div className="text-gray-400 text-sm mb-1">Infections bloquées (Verrou)</div>
-                <div className="text-2xl font-bold text-emerald-400">83.0%</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <div className="text-gray-400 text-sm mb-1">Appels inutiles éliminés</div>
-                <div className="text-2xl font-bold text-violet-400">93.6%</div>
-              </div>
-            </div>
-            
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Activité Récente</h3>
-              <div className="space-y-3">
-                <div className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Connexion sécurisée établie (Dr. Dupont)</span>
-                  <span className="text-xs text-slate-500">Il y a 2 min</span>
-                </div>
-                <div className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Mise à jour du catalogue des matériaux</span>
-                  <span className="text-xs text-slate-500">Il y a 1 heure</span>
-                </div>
-                <div className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Synchronisation logistique réussie</span>
-                  <span className="text-xs text-slate-500">Il y a 3 heures</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════ COMMANDES TAB → INTERFACE TECHNICIEN CFAO ════ */}
-        {activeTab === 'commandes' && (
-          <CfaoPipeline orders={orders} patchOrder={patchOrder} />
-        )}
-
-        {/* ════ FACTURATION TAB → FLUX FINANCIER MAROCAIN ════ */}
-        {activeTab === 'facturation' && (
-          <BillingPipeline orders={orders} patchOrder={patchOrder} />
-        )}
-      </div>
-    </div>
-  );
+  if (section === 'configuration') return <LabBusinessConfiguration key={configTarget?.request || 'configuration'} target={configTarget} />;
+  if (section === 'orders') return <OrderManagement orders={orders} patchOrder={patchOrder} />;
+  if (section === 'billing') return <div className="space-y-6"><div><p className="text-xs uppercase tracking-widest text-sky-400">Gestion</p><h1 className="mt-2 text-2xl font-semibold">Facturation</h1></div><BillingPipeline orders={orders} patchOrder={patchOrder} /></div>;
+  return <LabOverview orders={orders} tab={activeTab} setTab={setActiveTab} alertState={alertState} alertFocus={alertFocus} onAlertSelect={onAlertSelect} />;
 }
-
-// ── CFAO Production Pipeline ──
-
-const CFAO_CHAIN = [
-  "A_CONFIRMER",
-  "SALLE_CAO",
-  "USINAGE_CNC",
-  "FRITTAGE_9H",
-  "CONTROLE_QUALITE",
-  "PRET_EXPEDITION"
-];
-
-const CFAO_STAGES = [
-  { key: "A_CONFIRMER",      label: "1. Réception & Modèle",       badge: null,                                     nextStatus: "SALLE_CAO",        nextLabel: "Envoyer en Conception ➔",       needsDate: true },
-  { key: "SALLE_CAO",        label: "2. Salle Conception (CAO)",   badge: "Génération .STL + .constructionInfo",     nextStatus: "USINAGE_CNC",      nextLabel: "Envoyer vers CNC ➔",            needsDate: false },
-  { key: "USINAGE_CNC",      label: "3. Calcul CNC & Usinage",    badge: "Fraisage 5-Axes",                         nextStatus: "FRITTAGE_9H",      nextLabel: "Lancer Frittage (9h) ➔",        needsDate: false },
-  { key: "FRITTAGE_9H",      label: "4. Four de Frittage (9h)",    badge: "🔥 Cuisson 1500°C + Refroidissement",     nextStatus: "CONTROLE_QUALITE", nextLabel: "Passer au Contrôle ➔",          needsDate: false },
-  { key: "CONTROLE_QUALITE", label: "5. Phase de Contrôle",        badge: "Vérification & Glaçage",                  nextStatus: "PRET_EXPEDITION",  nextLabel: "Valider & Appeler Coursier ➔",  needsDate: false },
-];
-
-const stageBorderColors = {
-  A_CONFIRMER:      "border-gray-500/30",
-  SALLE_CAO:        "border-blue-500/30",
-  USINAGE_CNC:      "border-indigo-500/30",
-  FRITTAGE_9H:      "border-orange-500/30",
-  CONTROLE_QUALITE: "border-cyan-500/30",
-};
-
-const stageAccentColors = {
-  A_CONFIRMER:      "text-gray-400",
-  SALLE_CAO:        "text-blue-400",
-  USINAGE_CNC:      "text-indigo-400",
-  FRITTAGE_9H:      "text-orange-400",
-  CONTROLE_QUALITE: "text-cyan-400",
-};
-
-function CfaoPipeline({ orders, patchOrder }) {
-  const [draggedOrder, setDraggedOrder] = useState(null);
-
-  const nextValidStage = draggedOrder
-    ? CFAO_CHAIN[CFAO_CHAIN.indexOf(draggedOrder.status) + 1]
-    : null;
-
-  const handleDrop = (e, targetStageKey) => {
-    e.preventDefault();
-    if (!draggedOrder) return;
-    const currentIndex = CFAO_CHAIN.indexOf(draggedOrder.status);
-    const targetIndex = CFAO_CHAIN.indexOf(targetStageKey);
-
-    // ONLY advance if target row is strictly the next step in the chain
-    if (targetIndex === currentIndex + 1) {
-      patchOrder(draggedOrder.id, { status: targetStageKey });
-    }
-    setDraggedOrder(null);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  };
-
-  return (
-    <div className="space-y-6">
-      {CFAO_STAGES.map(stage => {
-        const stageOrders = orders.filter(o => o.status === stage.key);
-        const isNextTarget = stage.key === nextValidStage;
-
-        return (
-          <div
-            key={stage.key}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, stage.key)}
-            className={`border rounded-2xl p-5 transition-all duration-200 ${
-              isNextTarget
-                ? "ring-2 ring-emerald-500/50 bg-emerald-900/10 border-emerald-500/40"
-                : `bg-black/20 ${stageBorderColors[stage.key]}`
-            }`}
-          >
-            <h3 className={`font-semibold mb-4 flex items-center justify-between ${stageAccentColors[stage.key]}`}>
-              <span className="flex items-center gap-2">
-                {stage.label}
-                {isNextTarget && (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
-                    Zone de Dépôt Valide
-                  </span>
-                )}
-              </span>
-              <span className="bg-white/10 text-white px-2.5 py-0.5 rounded-full text-xs">{stageOrders.length}</span>
-            </h3>
-            {stageOrders.length === 0 && <div className="text-sm text-slate-500 text-center py-3">Aucune commande à cette étape. Glissez une commande ici.</div>}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {stageOrders.map(o => (
-                <CfaoCard
-                  key={o.id}
-                  order={o}
-                  stage={stage}
-                  patchOrder={patchOrder}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", o.id);
-                    setDraggedOrder(o);
-                  }}
-                  onDragEnd={() => setDraggedOrder(null)}
-                  isDragging={draggedOrder?.id === o.id}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function CfaoCard({ order, stage, patchOrder, onDragStart, onDragEnd, isDragging }) {
-  const [date, setDate] = useState(order.delivery_date || "");
-
-  const handleAdvance = () => {
-    const payload = { status: stage.nextStatus };
-    if (stage.needsDate && date) {
-      payload.delivery_date = date;
-    }
-    patchOrder(order.id, payload);
-  };
-
-  return (
-    <div
-      draggable={true}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className={`bg-white/5 border border-white/10 p-4 rounded-xl shadow-lg relative overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
-        isDragging ? "opacity-30 scale-95 border-emerald-500/50" : "opacity-100 hover:border-white/20"
-      }`}
-    >
-      {order.is_fast_track && (
-        <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none">
-          <div className="absolute transform rotate-45 bg-amber-500 text-black text-[10px] font-bold py-1 right-[-35px] top-[10px] w-[100px] text-center">URGENCE</div>
-        </div>
-      )}
-      <div className="flex items-center justify-between">
-        <div className="font-bold text-lg">{order.patient_ref}</div>
-        <span className="text-[10px] text-slate-500 font-mono">⠿ Glisser</span>
-      </div>
-      <div className="text-sm text-gray-400 mb-2">{order.dentist_name}</div>
-
-      {/* Order details */}
-      <div className="text-xs text-gray-300 grid grid-cols-2 gap-2 mb-3 bg-black/30 p-2 rounded">
-        <div>Dent: {order.tooth_number}</div>
-        <div>Teinte: {order.shade}</div>
-        <div>Mat: {order.material}</div>
-        <div>{order.total_price} MAD</div>
-      </div>
-
-      {/* Impression badge */}
-      <div className={`text-xs mb-3 px-2 py-1 rounded inline-flex items-center gap-1 ${
-        order.impression_type === "NUMERIQUE"
-          ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
-          : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
-      }`}>
-        {order.impression_type === "NUMERIQUE" ? `💻 Fichier .STL${order.stl_file_name ? ` — ${order.stl_file_name}` : ""}` : "📦 Empreinte Physique"}
-      </div>
-
-      {/* Stage badge */}
-      {stage.badge && (
-        <div className="text-xs bg-white/5 border border-white/10 text-slate-300 px-2 py-1 rounded mb-3">
-          {stage.badge}
-        </div>
-      )}
-
-      {/* Date picker for A_CONFIRMER */}
-      {stage.needsDate && (
-        <div className="mb-3">
-          <label className="block text-xs text-gray-500 mb-1">Date de livraison estimée</label>
-          <input
-            type="date"
-            className="w-full bg-black/50 border border-white/10 rounded text-xs p-2 text-white"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-          />
-        </div>
-      )}
-
-      {/* Advance button */}
-      <button
-        onClick={handleAdvance}
-        className="w-full mt-1 bg-white/10 hover:bg-white/20 border border-white/20 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 font-medium"
-      >
-        <ChevronRight className="w-4 h-4" /> {stage.nextLabel}
-      </button>
-    </div>
-  );
-}
-
-// ── Moroccan Billing Pipeline with Drag & Drop ──
 
 const FINANCE_CHAIN = ["COMMANDE", "SITUATION", "FACTURE"];
 
@@ -884,11 +665,7 @@ function BillingPipeline({ orders, patchOrder }) {
 
   const bulkPatch = async (ids, payload) => {
     for (const id of ids) {
-      await fetch(`${API_URL}${id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      await api.patch(`prescriptions/${id}/`, payload);
     }
     patchOrder(ids[0], {});
   };
@@ -1077,12 +854,8 @@ function CourierPortal({ orders, refresh }) {
   const [pin, setPin] = useState("");
 
   const patchOrder = async (id, payload) => {
-    await fetch(`${API_URL}${id}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    refresh();
+    await api.patch(`prescriptions/${id}/`, payload);
+    await refresh();
   };
 
   const handleConfirmDelivery = (id) => {
