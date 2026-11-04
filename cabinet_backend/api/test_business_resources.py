@@ -1,4 +1,5 @@
 from datetime import date
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -53,11 +54,11 @@ class LaboratoryBusinessResourceTests(TenantTestCase):
                 detail = f'{url}{response.data["id"]}/'
                 self.assertEqual(self.client.get(detail).status_code, 200)
                 patch = {'is_available': False} if endpoint == 'employee-profiles' else (
-                    {'quantity': 10} if endpoint == 'inventory' else {'name': 'Updated'}
+                    {'material_name': 'Updated'} if endpoint == 'inventory' else {'name': 'Updated'}
                 )
                 self.assertEqual(self.client.patch(detail, patch, format='json').status_code, 200)
-                self.assertEqual(self.client.delete(detail).status_code, 204)
-                self.assertEqual(self.client.get(detail).status_code, 404)
+                self.assertEqual(self.client.delete(detail).status_code, 400 if endpoint == 'inventory' else 204)
+                self.assertEqual(self.client.get(detail).status_code, 200 if endpoint == 'inventory' else 404)
         with schema_context('public'):
             self.assertTrue(get_user_model().objects.filter(pk=self.employee.pk).exists())
             self.assertNotIn('api_employeeprofile', connection.introspection.table_names())
@@ -66,7 +67,12 @@ class LaboratoryBusinessResourceTests(TenantTestCase):
         inventory = {'material_name': 'PMMA', 'quantity': 3, 'unit': 'DISQUE', 'alert_threshold': 3}
         result = self.client.post('/api/inventory/', inventory, format='json')
         self.assertTrue(result.data['is_low_stock'])
-        updated = self.client.patch(f'/api/inventory/{result.data["id"]}/', {'quantity': 4}, format='json')
+        movement = self.client.post('/api/inventory-transactions/', {
+            'inventory_item': result.data['id'], 'quantity_changed': '1', 'transaction_type': 'RESTOCK',
+            'idempotency_key': str(uuid.uuid4()),
+        }, format='json')
+        self.assertEqual(movement.status_code, 201, movement.data)
+        updated = self.client.get(f'/api/inventory/{result.data["id"]}/')
         self.assertFalse(updated.data['is_low_stock'])
         invalid = [
             ('inventory', {**inventory, 'quantity': -1}, 'quantity'),
@@ -104,10 +110,14 @@ class LaboratoryBusinessResourceTests(TenantTestCase):
         self.assertIn(self.client.get('/api/machines/', HTTP_HOST='localhost').status_code, [403, 404])
 
     def test_demo_laboratory_account_is_supported(self):
+        from django.contrib.auth.hashers import make_password
         with schema_context('public'):
-            PlatformAccount.objects.create(name='Resource lab', login_key='resourcelab', role='LAB', laboratory=self.tenant)
+            PlatformAccount.objects.create(name='Resource lab', login_key='resourcelab', role='LAB', laboratory=self.tenant,
+                                           password_hash=make_password('secure-test-pass'))
         self.client.force_authenticate(user=None)
-        login = self.client.post('/platform/login/', {'name': 'Resource lab'}, format='json')
+        bad_login = self.client.post('/platform/login/', {'name': 'Resource lab'}, format='json')
+        self.assertEqual(bad_login.status_code, 401)
+        login = self.client.post('/platform/login/', {'name': 'Resource lab', 'password': 'secure-test-pass'}, format='json')
         self.assertEqual(login.status_code, 200, login.data)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {login.data["token"]}')
         self.assertEqual(self.client.get('/api/machines/').status_code, 200)

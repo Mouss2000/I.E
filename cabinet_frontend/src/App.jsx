@@ -33,7 +33,7 @@ export default function App() {
   const fetchOrders = useCallback(async () => {
     try {
       if (user?.role === 'Administrateur') return;
-      const res = user?.role === 'Cabinet Dentaire' ? await platform.get('dentist/orders/') : await api.get("prescriptions/");
+      const res = user?.role === 'Cabinet Dentaire' ? await platform.get('dentist/orders/') : await api.get("prescriptions/", { params: { include_completed: true } });
       setOrders(res.data);
     } catch (e) {
       console.error("API Error", e);
