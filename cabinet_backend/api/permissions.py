@@ -1,33 +1,45 @@
-from rest_framework.permissions import BasePermission
-from customers.views import current_account
+from rest_framework.permissions import BasePermission, SAFE_METHODS
+from customers.models import PlatformAccount
 
 
-class LaboratoryResourcePermission(BasePermission):
-    """Require a laboratory schema and an authenticated laboratory actor."""
+def actor_role(request):
+    user = request.user
+    if not user or not user.is_authenticated:
+        return None
+    if isinstance(user, PlatformAccount):
+        return user.workstation_role if user.role == 'LAB' else user.role
+    if user.is_superuser:
+        return 'MANAGER'
+    from .models import EmployeeProfile
+    role = EmployeeProfile.objects.filter(user_id=user.pk).values_list('role', flat=True).first()
+    return 'COURIER' if role == 'COURSIER' else role
 
-    message = 'Authenticated laboratory access is required.'
+class TenantMemberPermission(BasePermission):
+    message = 'Authenticated membership of this laboratory is required.'
 
     def has_permission(self, request, view):
         tenant = getattr(request, 'tenant', None)
-        if tenant is None or tenant.schema_name == 'public':
+        user = request.user
+        if tenant is None or tenant.schema_name == 'public' or not tenant.is_active or not user.is_authenticated:
             return False
-        if request.headers.get('Authorization', '').startswith('Bearer '):
-            account = current_account(request)
-            return account.role == 'LAB' and account.laboratory_id == tenant.pk
-        if not request.user or not request.user.is_authenticated:
-            return False
-        if request.user.is_superuser:
-            return True
-        from .models import EmployeeProfile
-        return EmployeeProfile.objects.filter(user_id=request.user.pk).exists()
+        if isinstance(user, PlatformAccount):
+            return user.is_active and user.role in {'LAB', 'COURIER'} and user.laboratory_id == tenant.pk
+        return actor_role(request) is not None
 
 
-class DemoTenantPermission(BasePermission):
-    message = 'Ce compte n’est pas affecté à ce laboratoire.'
-
+class LaboratoryResourcePermission(TenantMemberPermission):
     def has_permission(self, request, view):
-        # Keep the existing, token-free courier prototype unchanged.
-        if not request.headers.get('Authorization', '').startswith('Bearer '):
-            return True
-        account = current_account(request)
-        return account.role == 'LAB' and account.laboratory_id == request.tenant.pk
+        if not super().has_permission(request, view):
+            return False
+        role = actor_role(request)
+        if role == 'COURIER':
+            return False
+        if request.method in SAFE_METHODS:
+            return role in getattr(view, 'read_roles', {'MANAGER', 'RECEPTION', 'CAO', 'FAO', 'QUALITE', 'COMPTABILITE'})
+        return role in getattr(view, 'write_roles', {'MANAGER'})
+
+class PrescriptionPermission(TenantMemberPermission):
+    pass
+
+
+DemoTenantPermission = LaboratoryResourcePermission

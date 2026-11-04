@@ -10,6 +10,7 @@ const portals = [['LAB', 'Laboratoire'], ['DENTIST', 'Dentiste'], ['COURIER', 'C
 export default function DemoLogin({ setUser }) {
   const [portal, setPortal] = useState('LAB');
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
   const [laboratory, setLaboratory] = useState('');
   const [laboratories, setLaboratories] = useState([]);
   const [loadingLabs, setLoadingLabs] = useState(true);
@@ -36,16 +37,10 @@ export default function DemoLogin({ setUser }) {
     setBusy(true); setError('');
     try {
       let user;
-      if (portal === 'COURIER') {
-        const selected = laboratories.find(lab => lab.identifier === laboratory);
-        if (!selected) throw new Error('Sélectionnez un laboratoire.');
-        setTenant(selected.identifier, selected.name);
-        sessionStorage.removeItem('demo_token');
-        user = { name: name.trim(), role: 'Coursier' };
-      } else {
-        const { data } = await platform.post('login/', { name: name.trim(), role: portal, ...(portal === 'LAB' ? { laboratory } : {}) });
-        const role = { ADMIN: 'Administrateur', DENTIST: 'Cabinet Dentaire', LAB: 'Laboratoire' }[data.account.role];
-        user = { id: data.account.id, name: data.account.name, role, email: data.account.email };
+      {
+        const { data } = await platform.post('login/', { name: name.trim(), password, role: portal, ...(needsLab ? { laboratory } : {}) });
+        const role = { ADMIN: 'Administrateur', DENTIST: 'Cabinet Dentaire', LAB: 'Laboratoire', COURIER: 'Coursier' }[data.account.role];
+        user = { id: data.account.id, name: data.account.name, role, email: data.account.email, workstation_role: data.account.workstation_role };
         if (data.account.laboratory_id) setTenant(data.account.laboratory_id, data.account.laboratory_name);
         else clearTenant();
         sessionStorage.setItem('demo_token', data.token);
@@ -65,9 +60,10 @@ export default function DemoLogin({ setUser }) {
         {labError ? <p role="alert" className="mt-2 text-xs text-red-300">{labError} <button type="button" onClick={() => { setLoadingLabs(true); setLabError(''); setRetry(value => value + 1); }} className="underline">Réessayer</button></p> : !loadingLabs && !laboratories.length && <p role="status" className="mt-2 text-xs text-amber-300">Aucun laboratoire disponible. Contactez l’administration.</p>}
       </div>}
       <label htmlFor="login-name" className="block text-sm text-slate-300">{portal === 'COURIER' ? 'Nom du coursier' : 'Votre identification'}<input id="login-name" autoComplete="username" required maxLength={150} pattern=".*\S.*" value={name} onChange={event => setName(event.target.value)} placeholder={portal === 'LAB' || portal === 'COURIER' ? 'Mohamed' : portal === 'DENTIST' ? 'Dentiste 1' : 'Admin'} className={inputClass} />{portal === 'LAB' && <span className="mt-2 block text-xs text-slate-500">Exemple : sélectionnez Labo 1 et saisissez simplement Mohamed.</span>}</label>
+      <label htmlFor="login-password" className="block text-sm text-slate-300">Mot de passe<input id="login-password" type="password" autoComplete="current-password" required maxLength={256} value={password} onChange={event => setPassword(event.target.value)} className={inputClass} /></label>
     </fieldset>
     {error && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-300">{error}</p>}
     <button disabled={busy || (needsLab && (loadingLabs || Boolean(labError) || !laboratory))} className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 font-medium hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:opacity-50">{busy ? 'Connexion…' : 'Accéder à mon espace'}<ArrowRight aria-hidden="true" className="h-4 w-4" /></button></form>
-    <div className="mt-6 rounded-xl border border-sky-400/15 bg-sky-400/5 p-4 text-xs leading-relaxed text-slate-400"><p className="font-medium text-sky-300">Mode démonstration — sans mot de passe</p><p className="mt-2">{portal === 'LAB' ? 'Choisissez Labo 1, 2 ou 3, puis saisissez Mohamed.' : portal === 'DENTIST' ? 'Identifications : Dentiste 1, Dentiste 2, Dentiste 3.' : portal === 'ADMIN' ? 'Identification : Admin.' : 'Saisissez votre nom et choisissez le laboratoire de votre tournée.'}</p></div>
+    <p className="mt-6 text-xs leading-relaxed text-slate-400">Accès personnel sécurisé. Pour obtenir un compte ou réinitialiser votre mot de passe, contactez l’administration.</p>
   </section></div>;
 }

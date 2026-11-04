@@ -32,9 +32,10 @@ const sections = {
     description: 'Consommables et seuils de réapprovisionnement.',
     fields: [
       { key: 'material_name', label: 'Matériau', maxLength: 120 },
-      { key: 'quantity', label: 'Quantité', type: 'number', min: 0, step: 'any' },
-      { key: 'unit', label: 'Unité', options: [['DISQUE', 'Disque'], ['GRAMMES', 'Grammes'], ['UNITES', 'Unités']] },
-      { key: 'alert_threshold', label: 'Seuil d’alerte', type: 'number', min: 0, step: 'any' },
+      { key: 'quantity', label: 'Quantité initiale', type: 'number', min: 0, step: '0.000001', decimal: true, createOnly: true, hint: 'Après création, le solde suit les mouvements de stock.' },
+      { key: 'unit', label: 'Unité', createOnly: true, options: [['DISQUE', 'Disque'], ['GRAMMES', 'Grammes'], ['UNITES', 'Unités']] },
+      { key: 'alert_threshold', label: 'Seuil d’alerte', type: 'number', min: 0, step: '0.000001', decimal: true },
+      { key: 'unit_cost', label: 'Coût unitaire de référence (MAD)', type: 'number', min: 0, step: '0.000001', decimal: true, optional: true, hint: 'Facultatif. Conservé dans chaque nouveau mouvement pour valoriser les pertes.' },
     ],
     columns: [['material_name', 'Matériau'], ['quantity', 'Quantité'], ['unit', 'Unité'], ['alert_threshold', 'Seuil'], ['is_low_stock', 'Niveau']],
   },
@@ -109,8 +110,8 @@ function ResourceTable({ section, active }) {
     event.preventDefault();
     if (busy.current) return;
     busy.current = true; setSaving(true); setFieldErrors({}); setError('');
-    const payload = Object.fromEntries(section.fields.map(field => [field.key,
-      field.type === 'number' ? (form[field.key] === '' ? null : Number(form[field.key])) :
+    const payload = Object.fromEntries(section.fields.filter(field => !(editor.id && field.createOnly)).map(field => [field.key,
+      field.type === 'number' ? (form[field.key] === '' ? null : field.decimal ? form[field.key] : Number(form[field.key])) :
         typeof form[field.key] === 'string' ? form[field.key].trim() : form[field.key],
     ]));
     try {
@@ -142,7 +143,7 @@ function ResourceTable({ section, active }) {
       <p className="text-xs text-slate-400">Les champs marqués * sont obligatoires.</p>
       <fieldset disabled={saving} className="grid gap-4 sm:grid-cols-2">{section.fields.map(field => {
         const id = `config-field-${field.key}`;
-        const shared = { id, 'aria-invalid': Boolean(fieldErrors[field.key]), 'aria-describedby': `${id}-help ${id}-error`, required: !field.optional, className: inputClass };
+        const shared = { id, disabled: Boolean(editor.id && field.createOnly), 'aria-invalid': Boolean(fieldErrors[field.key]), 'aria-describedby': `${id}-help ${id}-error`, required: !field.optional, className: inputClass };
         return <div key={field.key} className={field.type === 'textarea' ? 'sm:col-span-2' : ''}>
           <label htmlFor={id} className="mb-2 block text-sm text-slate-300">{field.label}{!field.optional && field.type !== 'checkbox' ? ' *' : ''}</label>
           {field.options ? <select {...shared} value={form[field.key]} onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))}>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : field.type === 'textarea' ? <textarea {...shared} rows={3} value={form[field.key]} onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))} /> : field.type === 'checkbox' ? <input id={id} type="checkbox" checked={Boolean(form[field.key])} onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.checked }))} className="h-5 w-5 accent-sky-400" /> : <input {...shared} type={field.type || 'text'} min={field.min} step={field.step} maxLength={field.maxLength} value={form[field.key]} onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))} />}
@@ -156,7 +157,7 @@ function ResourceTable({ section, active }) {
     {deleting && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm"><p>Supprimer « {rowName(deleting)} » ? Cette action est définitive.</p><div className="flex gap-3"><button type="button" disabled={saving} onClick={() => setDeleting(null)} className={buttonClass}>Annuler</button><button type="button" disabled={saving} onClick={remove} className="rounded-xl bg-red-500 px-3 py-2 disabled:opacity-40">{saving ? 'Suppression…' : 'Confirmer la suppression'}</button></div></div>}
     <div className="flex flex-wrap items-center gap-3"><input type="search" aria-label={`Rechercher dans ${section.label}`} placeholder="Rechercher dans les fiches…" value={query} onChange={event => setQuery(event.target.value)} className={`${inputClass} sm:max-w-sm`} /><button type="button" disabled={loading || saving} onClick={refresh} className={buttonClass}>Actualiser</button><span className="text-xs text-slate-500">{visibleRows.length} fiche(s)</span></div>
     <div aria-busy={loading} className="overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[640px] text-left text-sm"><caption className="sr-only">{section.label} du laboratoire</caption><thead className="bg-white/[0.03] text-xs uppercase tracking-wide text-slate-400"><tr>{section.columns.map(([key, label]) => <th scope="col" key={key} className="px-4 py-3 font-medium">{label}</th>)}<th scope="col" className="px-4 py-3 text-right font-medium">Actions</th></tr></thead><tbody>
-      {loading ? <tr><td colSpan={section.columns.length + 1} role="status" className="p-10 text-center text-slate-400">Chargement…</td></tr> : !visibleRows.length ? <tr><td colSpan={section.columns.length + 1} className="p-10 text-center text-slate-400">{error ? 'Les fiches ne sont pas disponibles.' : query ? 'Aucun résultat pour cette recherche.' : 'Aucune fiche. Ajoutez votre première entrée.'}</td></tr> : visibleRows.map(row => <tr key={row.id} className="border-t border-white/10 text-slate-300 hover:bg-white/[0.03]">{section.columns.map(([key]) => <td key={key} className="max-w-xs whitespace-pre-line break-words px-4 py-4">{cellValue(section, row, key)}</td>)}<td className="px-4 py-4"><div className="flex justify-end gap-2"><button type="button" disabled={saving} aria-label={`Modifier ${rowName(row)}`} onClick={() => openEditor(row)} className={buttonClass}>Modifier</button><button type="button" disabled={saving} aria-label={`Supprimer ${rowName(row)}`} onClick={() => { setDeleting(row); setEditor(null); setNotice(''); }} className={`${buttonClass} text-red-300`}>Supprimer</button></div></td></tr>)}
+      {loading ? <tr><td colSpan={section.columns.length + 1} role="status" className="p-10 text-center text-slate-400">Chargement…</td></tr> : !visibleRows.length ? <tr><td colSpan={section.columns.length + 1} className="p-10 text-center text-slate-400">{error ? 'Les fiches ne sont pas disponibles.' : query ? 'Aucun résultat pour cette recherche.' : 'Aucune fiche. Ajoutez votre première entrée.'}</td></tr> : visibleRows.map(row => <tr key={row.id} className="border-t border-white/10 text-slate-300 hover:bg-white/[0.03]">{section.columns.map(([key]) => <td key={key} className="max-w-xs whitespace-pre-line break-words px-4 py-4">{cellValue(section, row, key)}</td>)}<td className="px-4 py-4"><div className="flex justify-end gap-2"><button type="button" disabled={saving} aria-label={`Modifier ${rowName(row)}`} onClick={() => openEditor(row)} className={buttonClass}>Modifier</button><button type="button" disabled={saving || section.endpoint === 'inventory'} title={section.endpoint === 'inventory' ? 'Historique de stock conservé' : undefined} aria-label={`Supprimer ${rowName(row)}`} onClick={() => { setDeleting(row); setEditor(null); setNotice(''); }} className={`${buttonClass} text-red-300`}>Supprimer</button></div></td></tr>)}
     </tbody></table></div>
   </section>;
 }
